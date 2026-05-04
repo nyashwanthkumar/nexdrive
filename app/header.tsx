@@ -13,21 +13,26 @@ export function Header() {
   const { isSignedIn } = useAuth();
 
   return (
-    <header className="border-b border-zinc-200 bg-white">
+    <header className="border-b border-zinc-200 bg-white relative z-50">
       <div className="mx-auto flex h-16 w-full items-center justify-between px-6">
         <Link href="/" className="text-3xl font-medium text-zinc-900">
           FileDrive
         </Link>
 
         {isSignedIn ? (
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-3 overflow-visible">
             <OrganizationSwitcher
               afterCreateOrganizationUrl="/dashboard"
               afterLeaveOrganizationUrl="/dashboard"
               afterSelectOrganizationUrl="/dashboard"
               afterSelectPersonalUrl="/dashboard"
+              appearance={{
+                elements: {
+                  rootBox: "overflow-visible",
+                },
+              }}
             />
-            <UserButton afterSignOutUrl="/" />
+            <UserButton />
           </div>
         ) : (
           <SignInButton mode="modal">
