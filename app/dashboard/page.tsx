@@ -428,25 +428,51 @@ export default function DashboardPage() {
             </div>
 
             {/* Modal body */}
-            <div className="flex flex-1 items-center justify-center overflow-auto bg-zinc-50 p-6">
+            <div className="flex flex-1 items-center justify-center overflow-auto bg-zinc-50 p-0">
+
+              {/* Image preview */}
               {previewFile.type === "image" && previewFile.url && (
-                <img
-                  src={previewFile.url}
-                  alt={previewFile.name}
-                  className="max-h-[70vh] max-w-full rounded-lg object-contain shadow-sm"
-                />
+                <div className="flex h-full w-full items-center justify-center p-6">
+                  <img
+                    src={previewFile.url}
+                    alt={previewFile.name}
+                    className="max-h-[70vh] max-w-full rounded-lg object-contain shadow-sm"
+                  />
+                </div>
               )}
 
+              {/* PDF preview */}
               {previewFile.type === "pdf" && previewFile.url && (
-                <iframe
-                  src={previewFile.url}
-                  className="h-[70vh] w-full rounded-lg border border-zinc-200"
-                  title={previewFile.name}
-                />
+                <object
+                  data={previewFile.url}
+                  type="application/pdf"
+                  className="h-[75vh] w-full"
+                >
+                  <div className="flex flex-col items-center gap-4 p-10 text-center">
+                    <div className="flex h-14 w-14 items-center justify-center rounded-xl border border-zinc-200 bg-white">
+                      <FileText className="h-7 w-7 text-red-500" />
+                    </div>
+                    <div>
+                      <p className="text-sm font-medium text-zinc-700">
+                        Unable to preview this PDF in your browser
+                      </p>
+                      <p className="mt-1 text-sm text-zinc-400">
+                        Download the file to view it
+                      </p>
+                    </div>
+                    <Button asChild variant="outline" size="sm" className="rounded-lg">
+                      <a href={previewFile.url} download={previewFile.name} target="_blank" rel="noreferrer">
+                        <Download className="mr-1.5 h-3.5 w-3.5" />
+                        Download PDF
+                      </a>
+                    </Button>
+                  </div>
+                </object>
               )}
 
+              {/* CSV — no in-browser preview */}
               {previewFile.type === "csv" && (
-                <div className="flex flex-col items-center gap-4 text-center">
+                <div className="flex flex-col items-center gap-4 p-10 text-center">
                   <div className="flex h-14 w-14 items-center justify-center rounded-xl border border-zinc-200 bg-white">
                     <FileSpreadsheet className="h-7 w-7 text-emerald-500" />
                   </div>
@@ -467,8 +493,9 @@ export default function DashboardPage() {
                 </div>
               )}
 
+              {/* Fallback */}
               {!["image", "pdf", "csv"].includes(previewFile.type) && (
-                <div className="flex flex-col items-center gap-4 text-center">
+                <div className="flex flex-col items-center gap-4 p-10 text-center">
                   <div className="flex h-14 w-14 items-center justify-center rounded-xl border border-zinc-200 bg-white">
                     <FolderOpen className="h-7 w-7 text-zinc-400" />
                   </div>
@@ -476,7 +503,9 @@ export default function DashboardPage() {
                     <p className="text-sm font-medium text-zinc-700">
                       Preview not available for this file type
                     </p>
-                    <p className="mt-1 text-sm text-zinc-400">Download the file to open it</p>
+                    <p className="mt-1 text-sm text-zinc-400">
+                      Download the file to open it
+                    </p>
                   </div>
                   {previewFile.url && (
                     <Button asChild variant="outline" size="sm" className="rounded-lg">
