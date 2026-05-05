@@ -128,3 +128,13 @@
     @apply font-sans;
   }
 }
+
+.cl-rootBox,
+.cl-organizationSwitcherTriggerButton,
+.cl-userButtonBox,
+.cl-avatarBox,
+.cl-userPreviewAvatarBox,
+.cl-organizationSwitcher,
+.cl-userButton {
+  overflow: visible !important;
+}
