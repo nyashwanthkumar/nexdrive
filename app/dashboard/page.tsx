@@ -733,7 +733,7 @@ export default function DashboardPage() {
                 {displayedFiles.map((file) => (
                   <div
                     key={file._id}
-                    className="flex flex-col gap-3 border-b border-zinc-100 px-4 py-3 transition-colors last:border-b-0 hover:bg-zinc-50/70 sm:flex-row sm:items-center sm:justify-between"
+                    className="flex flex-col gap-3 border-b border-zinc-100 px-5 py-3.5 transition-colors last:border-b-0 hover:bg-zinc-50/70 sm:flex-row sm:items-center sm:justify-between"
                   >
                     <button
                       type="button"
@@ -741,13 +741,13 @@ export default function DashboardPage() {
                       onClick={() => file.url && setPreviewFile(file)}
                       className="flex min-w-0 items-center gap-3 text-left disabled:cursor-default"
                     >
-                      <div className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-zinc-100 bg-zinc-50">
+                      <div className="flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-zinc-100 bg-zinc-50">
                         {file.type === "image" && file.url ? (
                           <Image
                             src={file.url}
                             alt={file.name}
-                            width={40}
-                            height={40}
+                            width={44}
+                            height={44}
                             className="h-full w-full object-cover"
                           />
                         ) : (
@@ -755,7 +755,7 @@ export default function DashboardPage() {
                         )}
                       </div>
                       <div className="min-w-0">
-                        <p className="truncate text-sm font-medium text-zinc-900">
+                        <p className="truncate text-[15px] font-semibold text-zinc-900">
                           {file.name}
                         </p>
                         <span className="text-[10px] font-medium uppercase tracking-wide text-zinc-400">
@@ -912,7 +912,7 @@ export default function DashboardPage() {
                     {/* Info + actions */}
                     <div className="flex flex-1 flex-col gap-2 px-3 py-3">
                       <div className="flex items-start justify-between gap-2">
-                        <p className="line-clamp-1 text-sm font-medium text-zinc-900">
+                        <p className="line-clamp-1 text-[15px] font-semibold text-zinc-900">
                           {file.name}
                         </p>
                         <span className="shrink-0 rounded bg-zinc-100 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-zinc-500">
@@ -926,7 +926,7 @@ export default function DashboardPage() {
                             <Button
                               variant="outline"
                               size="sm"
-                              className="h-7 flex-1 rounded-lg px-2 text-xs"
+                            className="h-8 flex-1 rounded-lg px-2.5 text-sm"
                               disabled={!file.url}
                               onClick={() => file.url && setPreviewFile(file)}
                             >

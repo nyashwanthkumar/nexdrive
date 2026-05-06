@@ -122,7 +122,8 @@
     @apply border-border outline-ring/50;
   }
   body {
-    @apply bg-background text-foreground;
+    @apply bg-background text-foreground antialiased;
+    font-family: Arial, Helvetica, "Segoe UI", sans-serif;
   }
   html {
     @apply font-sans;
