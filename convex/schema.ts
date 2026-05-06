@@ -7,9 +7,23 @@ export default defineSchema({
     orgId: v.string(),
     userId: v.optional(v.string()),
     fileId: v.id("_storage"),
-    type: v.union(v.literal("image"), v.literal("csv"), v.literal("pdf")),
+    folderId: v.optional(v.id("folders")),
+    type: v.union(
+      v.literal("image"),
+      v.literal("pdf"),
+      v.literal("document"),
+      v.literal("spreadsheet"),
+      v.literal("audio"),
+      v.literal("video")
+    ),
     isFavorite: v.optional(v.boolean()),
     shouldDelete: v.optional(v.boolean()),
     deletedAt: v.optional(v.number()),
+  }),
+  folders: defineTable({
+    name: v.string(),
+    orgId: v.string(),
+    userId: v.optional(v.string()),
+    isFavorite: v.optional(v.boolean()),
   }),
 });

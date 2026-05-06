@@ -8,8 +8,8 @@ import { Toaster } from "@/components/ui/sonner";
 const inter = Inter({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: "FileDrive",
-  description: "FileDrive - Store your files",
+  title: "NexDrive",
+  description: "NexDrive - Store your files",
 };
 
 export default function RootLayout({

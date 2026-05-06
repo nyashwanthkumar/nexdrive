@@ -8,33 +8,67 @@ import Image from "next/image";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import type { Id } from "@/convex/_generated/dataModel";
+import {
+  ArrowDownAZ,
+  ArrowDownZA,
+  ArrowUpDown,
   Building2,
+  Check,
+  Clock,
   Download,
   Eye,
   FileSpreadsheet,
   FileText,
   FolderOpen,
+  Grid2X2,
   ImageIcon,
+  List,
   Loader2,
+  MoreVertical,
+  Music,
+  Pencil,
+  Plus,
   RotateCcw,
   Search,
   Star,
   Trash2,
   User,
+  Video,
   X,
 } from "lucide-react";
 import { toast } from "sonner";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 
-type ViewType = "all" | "favorites" | "trash";
+type ViewType =
+  | "recent"
+  | "starred"
+  | "folders"
+  | "images"
+  | "videos"
+  | "music"
+  | "documents"
+  | "pdfs"
+  | "trash";
+type DisplayMode = "grid" | "list";
+type SortMode = "newest" | "oldest" | "nameAsc" | "nameDesc";
 
 type FileItem = {
-  _id: string;
+  _id: Id<"files">;
+  _creationTime: number;
   name: string;
   type: string;
   url?: string | null;
   isFavorite?: boolean;
+  folderId?: Id<"folders">;
 };
 
 export default function DashboardPage() {
@@ -47,10 +81,36 @@ export default function DashboardPage() {
   const restoreFile = useMutation(api.files.restoreFile);
   const permanentlyDeleteFile = useMutation(api.files.permanentlyDeleteFile);
   const toggleFavorite = useMutation(api.files.toggleFavorite);
+  const renameFile = useMutation(api.files.renameFile);
+  const createFolder = useMutation(api.files.createFolder);
+  const deleteFolder = useMutation(api.files.deleteFolder);
+  const renameFolder = useMutation(api.files.renameFolder);
+  const toggleFavoriteFolder = useMutation(api.files.toggleFavoriteFolder);
 
   const [search, setSearch] = useState("");
-  const [activeView, setActiveView] = useState<ViewType>("all");
+  const [activeView, setActiveView] = useState<ViewType>("recent");
+  const [displayMode, setDisplayMode] = useState<DisplayMode>("grid");
+  const [sortMode, setSortMode] = useState<SortMode>("newest");
   const [previewFile, setPreviewFile] = useState<FileItem | null>(null);
+  const [renamingFile, setRenamingFile] = useState<FileItem | null>(null);
+  const [renameValue, setRenameValue] = useState("");
+  const [isRenaming, setIsRenaming] = useState(false);
+  const [renamingFolder, setRenamingFolder] = useState<{
+    id: Id<"folders">;
+    name: string;
+  } | null>(null);
+  const [folderRenameValue, setFolderRenameValue] = useState("");
+  const [isRenamingFolder, setIsRenamingFolder] = useState(false);
+  const [currentFolderId, setCurrentFolderId] = useState<Id<"folders"> | null>(null);
+  const [isFolderDialogOpen, setIsFolderDialogOpen] = useState(false);
+  const [folderName, setFolderName] = useState("");
+  const [isCreatingFolder, setIsCreatingFolder] = useState(false);
+  const [folderMenuId, setFolderMenuId] = useState<Id<"folders"> | null>(null);
+  const [deletingFolderId, setDeletingFolderId] = useState<Id<"folders"> | null>(null);
+  const [folderPendingDelete, setFolderPendingDelete] = useState<{
+    id: Id<"folders">;
+    name: string;
+  } | null>(null);
 
   const orgId = organization?.id ?? user?.id;
 
@@ -62,6 +122,11 @@ export default function DashboardPage() {
   const trashFiles = useQuery(
     api.files.getFiles,
     orgId ? { orgId, shouldDelete: true } : "skip"
+  );
+
+  const folders = useQuery(
+    api.files.getFolders,
+    orgId ? { orgId } : "skip"
   );
 
   useEffect(() => {
@@ -76,16 +141,53 @@ export default function DashboardPage() {
     return () => window.removeEventListener("keydown", handler);
   }, []);
 
-  const isLoading = activeFiles === undefined || trashFiles === undefined;
+  useEffect(() => {
+    const handlePointerDown = (event: MouseEvent) => {
+      const target = event.target as HTMLElement;
+      if (!target.closest("[data-folder-menu]")) {
+        setFolderMenuId(null);
+      }
+    };
+
+    document.addEventListener("mousedown", handlePointerDown);
+    return () => document.removeEventListener("mousedown", handlePointerDown);
+  }, []);
+
+  const isLoading = activeFiles === undefined || trashFiles === undefined || folders === undefined;
+  const currentFolder = folders?.find((folder) => folder._id === currentFolderId);
 
   const displayedFiles = useMemo(() => {
     const files = activeView === "trash" ? trashFiles ?? [] : activeFiles ?? [];
-    return files.filter((file) => {
+    const filteredFiles = files.filter((file) => {
       const matchesSearch = file.name.toLowerCase().includes(search.toLowerCase());
-      if (activeView === "favorites") return matchesSearch && file.isFavorite;
-      return matchesSearch;
+      const matchesFolder =
+        activeView === "recent" || activeView === "starred" || activeView === "trash"
+          ? true
+          : currentFolderId
+          ? file.folderId === currentFolderId
+          : !file.folderId;
+
+      if (activeView === "starred") return matchesSearch && file.isFavorite;
+      if (activeView === "folders") {
+        return currentFolderId ? matchesSearch && matchesFolder : false;
+      }
+      if (activeView === "images") return matchesSearch && file.type === "image";
+      if (activeView === "videos") return matchesSearch && file.type === "video";
+      if (activeView === "music") return matchesSearch && file.type === "audio";
+      if (activeView === "documents") {
+        return matchesSearch && ["document", "spreadsheet"].includes(file.type);
+      }
+      if (activeView === "pdfs") return matchesSearch && file.type === "pdf";
+      return matchesSearch && matchesFolder;
     });
-  }, [activeFiles, trashFiles, search, activeView]);
+
+    return [...filteredFiles].sort((a, b) => {
+      if (sortMode === "oldest") return a._creationTime - b._creationTime;
+      if (sortMode === "nameAsc") return a.name.localeCompare(b.name);
+      if (sortMode === "nameDesc") return b.name.localeCompare(a.name);
+      return b._creationTime - a._creationTime;
+    });
+  }, [activeFiles, trashFiles, search, activeView, sortMode, currentFolderId]);
 
   const workspaceTitle = organization ? organization.name : "Personal";
 
@@ -100,45 +202,245 @@ export default function DashboardPage() {
   function FileTypeIcon({ type }: { type: string }) {
     if (type === "image") return <ImageIcon className="h-7 w-7 text-sky-500" />;
     if (type === "pdf") return <FileText className="h-7 w-7 text-red-500" />;
-    if (type === "csv") return <FileSpreadsheet className="h-7 w-7 text-emerald-500" />;
+    if (type === "spreadsheet") return <FileSpreadsheet className="h-7 w-7 text-emerald-500" />;
+    if (type === "document") return <FileText className="h-7 w-7 text-indigo-500" />;
+    if (type === "audio") return <Music className="h-7 w-7 text-fuchsia-500" />;
+    if (type === "video") return <Video className="h-7 w-7 text-orange-500" />;
     return <FolderOpen className="h-7 w-7 text-zinc-400" />;
   }
 
   const viewMeta = {
-    all: { label: "Files", description: "All files in the current workspace" },
-    favorites: { label: "Favourites", description: "Files you have starred" },
+    recent: { label: "Recent", description: "Latest files in this workspace" },
+    starred: { label: "Starred", description: "Files you have starred" },
+    folders: {
+      label: currentFolder ? currentFolder.name : "Folders",
+      description: currentFolder ? "Files inside this folder" : "Create folders and organize files",
+    },
+    images: { label: "Images", description: "Image files in this workspace" },
+    videos: { label: "Videos", description: "Video files in this workspace" },
+    music: { label: "Music", description: "Audio files in this workspace" },
+    documents: { label: "Documents", description: "Documents in this workspace" },
+    pdfs: { label: "PDFs", description: "PDF files in this workspace" },
     trash: { label: "Trash", description: "Restore or permanently remove deleted files" },
   }[activeView];
 
+  const visibleFolders =
+    activeView === "folders" && !currentFolderId
+      ? [...(folders ?? [])]
+          .filter((folder) => folder.name.toLowerCase().includes(search.toLowerCase()))
+          .sort((a, b) => a.name.localeCompare(b.name))
+      : activeView === "starred"
+      ? [...(folders ?? [])]
+          .filter(
+            (folder) =>
+              (folder.isFavorite ?? false) &&
+              folder.name.toLowerCase().includes(search.toLowerCase())
+          )
+          .sort((a, b) => a.name.localeCompare(b.name))
+      : [];
+
+  function openRenameDialog(file: FileItem) {
+    setRenamingFile(file);
+    setRenameValue(file.name);
+  }
+
+  async function submitRename(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+
+    if (!renamingFile) return;
+
+    const nextName = renameValue.trim();
+    if (!nextName) {
+      toast.error("Name is required");
+      return;
+    }
+
+    try {
+      setIsRenaming(true);
+      await renameFile({ fileId: renamingFile._id, name: nextName });
+      setRenamingFile(null);
+      setRenameValue("");
+      toast.success("File renamed");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Failed to rename");
+    } finally {
+      setIsRenaming(false);
+    }
+  }
+
+  function openRenameFolderDialog(folder: { _id: Id<"folders">; name: string }) {
+    setFolderMenuId(null);
+    setRenamingFolder({ id: folder._id, name: folder.name });
+    setFolderRenameValue(folder.name);
+  }
+
+  async function submitFolderRename(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+
+    if (!renamingFolder) return;
+
+    const nextName = folderRenameValue.trim();
+    if (!nextName) {
+      toast.error("Name is required");
+      return;
+    }
+
+    try {
+      setIsRenamingFolder(true);
+      await renameFolder({ folderId: renamingFolder.id, name: nextName });
+      setRenamingFolder(null);
+      setFolderRenameValue("");
+      toast.success("Folder renamed");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Failed to rename folder");
+    } finally {
+      setIsRenamingFolder(false);
+    }
+  }
+
+  async function submitFolder(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+
+    if (!orgId) {
+      toast.error("Organization or user not found");
+      return;
+    }
+
+    try {
+      setIsCreatingFolder(true);
+      await createFolder({ name: folderName, orgId });
+      setFolderName("");
+      setIsFolderDialogOpen(false);
+      toast.success("Folder created");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Failed to create folder");
+    } finally {
+      setIsCreatingFolder(false);
+    }
+  }
+
+  async function handleDeleteFolder() {
+    if (!folderPendingDelete) return;
+    try {
+      setDeletingFolderId(folderPendingDelete.id);
+      await deleteFolder({ folderId: folderPendingDelete.id });
+
+      if (currentFolderId === folderPendingDelete.id) {
+        setCurrentFolderId(null);
+      }
+
+      setFolderPendingDelete(null);
+      toast.success("Folder deleted");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Failed to delete folder");
+    } finally {
+      setDeletingFolderId(null);
+    }
+  }
+
+  async function handleToggleFolderFavorite(folderId: Id<"folders">, isFavorite: boolean) {
+    try {
+      setFolderMenuId(null);
+      await toggleFavoriteFolder({ folderId });
+      toast.success(isFavorite ? "Removed from starred" : "Added to starred");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Failed to update starred folder");
+    }
+  }
+
   return (
     <>
-      <main className="min-h-[calc(100vh-64px)] bg-zinc-50">
+      <main className="min-h-[calc(100vh-64px)] bg-[#f6f7f9]">
         <div className="grid min-h-[calc(100vh-64px)] grid-cols-1 lg:grid-cols-[220px_minmax(0,1fr)]">
 
-          {/* Sidebar */}
-          <aside className="flex flex-col border-r border-zinc-200 bg-white px-3 py-5">
+            {/* Sidebar */}
+          <aside className="flex flex-col border-r border-zinc-200/80 bg-white px-3 py-5">
             <div className="mb-5 px-1">
-              <UploadButton />
+              <UploadButton folders={folders ?? []} />
             </div>
 
             <nav className="space-y-0.5">
               <SidebarItem
-                active={activeView === "all"}
-                icon={<FolderOpen className="h-4 w-4" />}
-                label="Files"
-                onClick={() => setActiveView("all")}
+                active={activeView === "recent"}
+                icon={<Clock className="h-4 w-4" />}
+                label="Recent"
+                onClick={() => {
+                  setActiveView("recent");
+                  setCurrentFolderId(null);
+                }}
               />
               <SidebarItem
-                active={activeView === "favorites"}
+                active={activeView === "starred"}
                 icon={<Star className="h-4 w-4" />}
-                label="Favourites"
-                onClick={() => setActiveView("favorites")}
+                label="Starred"
+                onClick={() => {
+                  setActiveView("starred");
+                  setCurrentFolderId(null);
+                }}
+              />
+              <SidebarItem
+                active={activeView === "folders"}
+                icon={<FolderOpen className="h-4 w-4" />}
+                label="Folders"
+                onClick={() => {
+                  setActiveView("folders");
+                  setCurrentFolderId(null);
+                }}
+              />
+              <div className="my-3 h-px bg-zinc-100" />
+              <SidebarItem
+                active={activeView === "images"}
+                icon={<ImageIcon className="h-4 w-4" />}
+                label="Images"
+                onClick={() => {
+                  setActiveView("images");
+                  setCurrentFolderId(null);
+                }}
+              />
+              <SidebarItem
+                active={activeView === "videos"}
+                icon={<Video className="h-4 w-4" />}
+                label="Videos"
+                onClick={() => {
+                  setActiveView("videos");
+                  setCurrentFolderId(null);
+                }}
+              />
+              <SidebarItem
+                active={activeView === "music"}
+                icon={<Music className="h-4 w-4" />}
+                label="Music"
+                onClick={() => {
+                  setActiveView("music");
+                  setCurrentFolderId(null);
+                }}
+              />
+              <SidebarItem
+                active={activeView === "documents"}
+                icon={<FileText className="h-4 w-4" />}
+                label="Documents"
+                onClick={() => {
+                  setActiveView("documents");
+                  setCurrentFolderId(null);
+                }}
+              />
+              <SidebarItem
+                active={activeView === "pdfs"}
+                icon={<FileText className="h-4 w-4" />}
+                label="PDFs"
+                onClick={() => {
+                  setActiveView("pdfs");
+                  setCurrentFolderId(null);
+                }}
               />
               <SidebarItem
                 active={activeView === "trash"}
                 icon={<Trash2 className="h-4 w-4" />}
                 label="Trash"
-                onClick={() => setActiveView("trash")}
+                onClick={() => {
+                  setActiveView("trash");
+                  setCurrentFolderId(null);
+                }}
               />
             </nav>
 
@@ -146,8 +448,8 @@ export default function DashboardPage() {
               <p className="mb-2 px-3 text-[10px] font-semibold uppercase tracking-widest text-zinc-400">
                 Workspace
               </p>
-              <div className="flex items-center gap-2.5 rounded-lg px-3 py-2">
-                <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-zinc-200 bg-zinc-50">
+              <div className="flex items-center gap-2.5 rounded-xl border border-zinc-100 bg-zinc-50/80 px-3 py-2">
+                <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border border-zinc-200 bg-white">
                   {organization ? (
                     <Building2 className="h-3.5 w-3.5 text-zinc-500" />
                   ) : (
@@ -162,10 +464,10 @@ export default function DashboardPage() {
           </aside>
 
           {/* Content */}
-          <section className="flex flex-col gap-5 px-6 py-5">
+          <section className="flex flex-col gap-5 px-6 py-6">
 
             {/* Search */}
-            <div className="flex items-center gap-3 rounded-lg border border-zinc-200 bg-white px-4 py-2.5 shadow-sm">
+            <div className="flex items-center gap-3 rounded-2xl border border-zinc-200/80 bg-white px-4 py-2.5 shadow-sm shadow-zinc-200/40">
               <Search className="h-4 w-4 shrink-0 text-zinc-400" />
               <Input
                 value={search}
@@ -176,16 +478,84 @@ export default function DashboardPage() {
             </div>
 
             {/* Header */}
-            <div className="flex items-center justify-between">
+            <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
-                <h1 className="text-lg font-semibold text-zinc-900">{viewMeta.label}</h1>
-                <p className="text-sm text-zinc-500">{viewMeta.description}</p>
+                <h1 className="text-xl font-semibold tracking-tight text-zinc-950">{viewMeta.label}</h1>
+                <p className="mt-0.5 text-xs text-zinc-500">{viewMeta.description}</p>
               </div>
-              {!isLoading && displayedFiles.length > 0 && (
-                <span className="text-xs text-zinc-400">
-                  {displayedFiles.length} {displayedFiles.length === 1 ? "file" : "files"}
-                </span>
-              )}
+              <div className="flex items-center gap-3">
+                {activeView === "folders" && !currentFolderId && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="rounded-full"
+                    onClick={() => setIsFolderDialogOpen(true)}
+                  >
+                    <Plus className="mr-1.5 h-3.5 w-3.5" />
+                    Folder
+                  </Button>
+                )}
+                {!isLoading && displayedFiles.length + visibleFolders.length > 0 && (
+                  <span className="text-xs text-zinc-400">
+                    {displayedFiles.length + visibleFolders.length}{" "}
+                    {displayedFiles.length + visibleFolders.length === 1 ? "item" : "items"}
+                  </span>
+                )}
+                <div className="flex h-9 items-center gap-2 rounded-full border border-zinc-300 bg-white px-3 text-sm shadow-sm">
+                  {sortMode === "nameAsc" ? (
+                    <ArrowDownAZ className="h-4 w-4 text-zinc-500" />
+                  ) : sortMode === "nameDesc" ? (
+                    <ArrowDownZA className="h-4 w-4 text-zinc-500" />
+                  ) : (
+                    <ArrowUpDown className="h-4 w-4 text-zinc-500" />
+                  )}
+                  <select
+                    aria-label="Sort files"
+                    value={sortMode}
+                    onChange={(event) => setSortMode(event.target.value as SortMode)}
+                    className="h-full cursor-pointer bg-transparent text-xs font-medium text-zinc-700 outline-none"
+                  >
+                    <option value="newest">Newest first</option>
+                    <option value="oldest">Oldest first</option>
+                    <option value="nameAsc">Name A-Z</option>
+                    <option value="nameDesc">Name Z-A</option>
+                  </select>
+                </div>
+                <div className="flex h-9 overflow-hidden rounded-full border border-zinc-300 bg-white p-0.5 shadow-sm">
+                  <button
+                    type="button"
+                    aria-label="List view"
+                    onClick={() => setDisplayMode("list")}
+                    className={`flex h-8 w-11 items-center justify-center rounded-full transition-colors ${
+                      displayMode === "list"
+                        ? "bg-zinc-900 text-white"
+                        : "text-zinc-500 hover:bg-zinc-50 hover:text-zinc-900"
+                    }`}
+                  >
+                    {displayMode === "list" ? (
+                      <Check className="h-4 w-4" />
+                    ) : (
+                      <List className="h-4 w-4" />
+                    )}
+                  </button>
+                  <button
+                    type="button"
+                    aria-label="Grid view"
+                    onClick={() => setDisplayMode("grid")}
+                    className={`flex h-8 w-11 items-center justify-center rounded-full transition-colors ${
+                      displayMode === "grid"
+                        ? "bg-zinc-900 text-white"
+                        : "text-zinc-500 hover:bg-zinc-50 hover:text-zinc-900"
+                    }`}
+                  >
+                    {displayMode === "grid" ? (
+                      <Check className="h-4 w-4" />
+                    ) : (
+                      <Grid2X2 className="h-4 w-4" />
+                    )}
+                  </button>
+                </div>
+              </div>
             </div>
 
             {/* Loading */}
@@ -197,13 +567,25 @@ export default function DashboardPage() {
             )}
 
             {/* Empty state */}
-            {!isLoading && displayedFiles.length === 0 && (
+            {!isLoading && displayedFiles.length === 0 && visibleFolders.length === 0 && (
               <div className="flex flex-1 flex-col items-center justify-center gap-3 py-24 text-center">
                 <div className="flex h-11 w-11 items-center justify-center rounded-xl border border-zinc-200 bg-white">
                   {activeView === "trash" ? (
                     <Trash2 className="h-5 w-5 text-zinc-400" />
-                  ) : activeView === "favorites" ? (
+                  ) : activeView === "starred" ? (
                     <Star className="h-5 w-5 text-zinc-400" />
+                  ) : activeView === "folders" ? (
+                    <FolderOpen className="h-5 w-5 text-zinc-400" />
+                  ) : activeView === "images" ? (
+                    <ImageIcon className="h-5 w-5 text-zinc-400" />
+                  ) : activeView === "videos" ? (
+                    <Video className="h-5 w-5 text-zinc-400" />
+                  ) : activeView === "music" ? (
+                    <Music className="h-5 w-5 text-zinc-400" />
+                  ) : activeView === "documents" ? (
+                    <FileText className="h-5 w-5 text-zinc-400" />
+                  ) : activeView === "pdfs" ? (
+                    <FileText className="h-5 w-5 text-zinc-400" />
                   ) : (
                     <FolderOpen className="h-5 w-5 text-zinc-400" />
                   )}
@@ -212,15 +594,43 @@ export default function DashboardPage() {
                   <p className="text-sm font-medium text-zinc-700">
                     {activeView === "trash"
                       ? "Trash is empty"
-                      : activeView === "favorites"
-                      ? "No favourites yet"
+                      : activeView === "starred"
+                      ? "No starred files yet"
+                      : activeView === "folders"
+                      ? currentFolderId
+                        ? "This folder is empty"
+                        : "No folders yet"
+                      : activeView === "images"
+                      ? "No images found"
+                      : activeView === "videos"
+                      ? "No videos found"
+                      : activeView === "music"
+                      ? "No music found"
+                      : activeView === "documents"
+                      ? "No documents found"
+                      : activeView === "pdfs"
+                      ? "No PDFs found"
                       : "No files found"}
                   </p>
                   <p className="mt-1 text-sm text-zinc-400">
                     {activeView === "trash"
                       ? "Deleted files will appear here"
-                      : activeView === "favorites"
+                      : activeView === "starred"
                       ? "Star a file to add it here"
+                      : activeView === "folders"
+                      ? currentFolderId
+                        ? "Use Upload to choose this folder as the destination"
+                        : "Create a folder to organize your files"
+                      : activeView === "images"
+                      ? "Upload an image to see it here"
+                      : activeView === "videos"
+                      ? "Upload a video to see it here"
+                      : activeView === "music"
+                      ? "Upload an audio file to see it here"
+                      : activeView === "documents"
+                      ? "Upload a document to see it here"
+                      : activeView === "pdfs"
+                      ? "Upload a PDF to see it here"
                       : search
                       ? "Try a different search term"
                       : "Upload a file to get started"}
@@ -229,17 +639,231 @@ export default function DashboardPage() {
               </div>
             )}
 
-            {/* File grid */}
-            {!isLoading && displayedFiles.length > 0 && (
-              <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
+            {!isLoading && visibleFolders.length > 0 && displayMode === "grid" && (
+              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+                {visibleFolders.map((folder) => (
+                  <div
+                    key={folder._id}
+                    className="group flex h-20 items-center gap-3 rounded-2xl border border-zinc-200/80 bg-white px-4 text-left shadow-sm shadow-zinc-200/40 transition-all duration-150 hover:-translate-y-0.5 hover:border-zinc-300 hover:shadow-md"
+                  >
+                    <button
+                      type="button"
+                      onClick={() => setCurrentFolderId(folder._id)}
+                      className="flex min-w-0 flex-1 items-center gap-3 text-left"
+                    >
+                      <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-zinc-50 text-zinc-700">
+                        <FolderOpen className="h-5 w-5" />
+                      </span>
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate text-sm font-semibold text-zinc-900">
+                          {folder.name}
+                        </span>
+                      </span>
+                    </button>
+                    <FolderActionsMenu
+                      isFavorite={folder.isFavorite ?? false}
+                      isOpen={folderMenuId === folder._id}
+                      isDeleting={deletingFolderId === folder._id}
+                      onToggle={() =>
+                        setFolderMenuId((current) =>
+                          current === folder._id ? null : folder._id
+                        )
+                      }
+                      onDelete={() => {
+                        setFolderMenuId(null);
+                        setFolderPendingDelete({ id: folder._id, name: folder.name });
+                      }}
+                      onRename={() => openRenameFolderDialog(folder)}
+                      onToggleFavorite={() =>
+                        handleToggleFolderFavorite(folder._id, folder.isFavorite ?? false)
+                      }
+                    />
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {!isLoading && visibleFolders.length > 0 && displayMode === "list" && (
+              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 overflow-visible">
+                {visibleFolders.map((folder) => (
+                  <div
+                    key={folder._id}
+                    className="flex h-20 items-center gap-3 rounded-2xl border border-zinc-200/80 bg-white px-4 shadow-sm shadow-zinc-200/40 transition-colors hover:bg-zinc-50/70"
+                  >
+                    <button
+                      type="button"
+                      onClick={() => setCurrentFolderId(folder._id)}
+                      className="flex min-w-0 flex-1 items-center gap-3 text-left"
+                    >
+                      <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-zinc-50">
+                        <FolderOpen className="h-5 w-5 text-zinc-600" />
+                      </span>
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate text-sm font-medium text-zinc-900">
+                          {folder.name}
+                        </span>
+                      </span>
+                    </button>
+                    <FolderActionsMenu
+                      isFavorite={folder.isFavorite ?? false}
+                      isOpen={folderMenuId === folder._id}
+                      isDeleting={deletingFolderId === folder._id}
+                      onToggle={() =>
+                        setFolderMenuId((current) =>
+                          current === folder._id ? null : folder._id
+                        )
+                      }
+                      onDelete={() => {
+                        setFolderMenuId(null);
+                        setFolderPendingDelete({ id: folder._id, name: folder.name });
+                      }}
+                      onRename={() => openRenameFolderDialog(folder)}
+                      onToggleFavorite={() =>
+                        handleToggleFolderFavorite(folder._id, folder.isFavorite ?? false)
+                      }
+                    />
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* File list */}
+            {!isLoading && displayedFiles.length > 0 && displayMode === "list" && (
+              <div className="overflow-hidden rounded-2xl border border-zinc-200/80 bg-white shadow-sm shadow-zinc-200/40">
                 {displayedFiles.map((file) => (
                   <div
                     key={file._id}
-                    className="group flex flex-col overflow-hidden rounded-xl border border-zinc-200 bg-white transition-shadow hover:shadow-sm"
+                    className="flex flex-col gap-3 border-b border-zinc-100 px-4 py-3 transition-colors last:border-b-0 hover:bg-zinc-50/70 sm:flex-row sm:items-center sm:justify-between"
+                  >
+                    <button
+                      type="button"
+                      disabled={!file.url}
+                      onClick={() => file.url && setPreviewFile(file)}
+                      className="flex min-w-0 items-center gap-3 text-left disabled:cursor-default"
+                    >
+                      <div className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-zinc-100 bg-zinc-50">
+                        {file.type === "image" && file.url ? (
+                          <Image
+                            src={file.url}
+                            alt={file.name}
+                            width={40}
+                            height={40}
+                            className="h-full w-full object-cover"
+                          />
+                        ) : (
+                          <FileTypeIcon type={file.type} />
+                        )}
+                      </div>
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-medium text-zinc-900">
+                          {file.name}
+                        </p>
+                        <span className="text-[10px] font-medium uppercase tracking-wide text-zinc-400">
+                          {file.type}
+                        </span>
+                      </div>
+                    </button>
+
+                    <div className="flex shrink-0 items-center gap-2">
+                      {activeView !== "trash" ? (
+                        <>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="h-8 rounded-lg text-xs"
+                            disabled={!file.url}
+                            onClick={() => file.url && setPreviewFile(file)}
+                          >
+                            <Eye className="mr-1.5 h-3.5 w-3.5" />
+                            Preview
+                          </Button>
+                          <Button
+                            asChild
+                            variant="ghost"
+                            size="sm"
+                            className="h-8 rounded-lg px-3 text-zinc-400 hover:bg-zinc-100 hover:text-zinc-700"
+                            disabled={!file.url}
+                          >
+                            <a href={file.url ?? "#"} download={file.name} target="_blank" rel="noreferrer">
+                              <Download className="h-3.5 w-3.5" />
+                            </a>
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-8 rounded-lg px-3 text-zinc-400 hover:bg-zinc-100 hover:text-zinc-700"
+                            onClick={() => openRenameDialog(file)}
+                          >
+                            <Pencil className="h-3.5 w-3.5" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-8 rounded-lg px-3 text-zinc-400 hover:bg-red-50 hover:text-red-500"
+                            onClick={async () => {
+                              try {
+                                await deleteFile({ fileId: file._id });
+                                toast.success("Moved to trash");
+                              } catch (error) {
+                                toast.error(error instanceof Error ? error.message : "Failed to move to trash");
+                              }
+                            }}
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </Button>
+                        </>
+                      ) : (
+                        <>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="h-8 rounded-lg text-xs"
+                            onClick={async () => {
+                              try {
+                                await restoreFile({ fileId: file._id });
+                                toast.success("File restored");
+                              } catch (error) {
+                                toast.error(error instanceof Error ? error.message : "Failed to restore");
+                              }
+                            }}
+                          >
+                            <RotateCcw className="mr-1.5 h-3.5 w-3.5" />
+                            Restore
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-8 rounded-lg px-3 text-zinc-400 hover:bg-red-50 hover:text-red-500"
+                            onClick={async () => {
+                              try {
+                                await permanentlyDeleteFile({ fileId: file._id });
+                                toast.success("Permanently deleted");
+                              } catch (error) {
+                                toast.error(error instanceof Error ? error.message : "Failed to delete");
+                              }
+                            }}
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </Button>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* File grid */}
+            {!isLoading && displayedFiles.length > 0 && displayMode === "grid" && (
+              <div className="grid gap-3 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
+                {displayedFiles.map((file) => (
+                  <div
+                    key={file._id}
+                    className="group flex flex-col overflow-hidden rounded-2xl border border-zinc-200/80 bg-white shadow-sm shadow-zinc-200/40 transition-all duration-150 hover:-translate-y-0.5 hover:border-zinc-300 hover:shadow-md hover:shadow-zinc-200/70"
                   >
                     {/* Thumbnail */}
                     <div
-                      className="relative h-36 w-full cursor-pointer overflow-hidden bg-zinc-50"
+                      className="relative h-28 w-full cursor-pointer overflow-hidden bg-zinc-100"
                       onClick={() => file.url && setPreviewFile(file)}
                     >
                       {file.type === "image" && file.url ? (
@@ -250,17 +874,9 @@ export default function DashboardPage() {
                           className="object-cover transition-transform duration-200 group-hover:scale-[1.02]"
                         />
                       ) : (
-                        <div className="flex h-full items-center justify-center">
-                          <FileTypeIcon type={file.type} />
-                        </div>
-                      )}
-
-                      {/* Preview hint */}
-                      {file.url && (
-                        <div className="absolute inset-0 flex items-center justify-center bg-black/0 transition-colors group-hover:bg-black/10">
-                          <div className="flex items-center gap-1.5 rounded-full bg-white/90 px-3 py-1.5 text-xs font-medium text-zinc-700 opacity-0 shadow-sm transition-opacity group-hover:opacity-100">
-                            <Eye className="h-3.5 w-3.5" />
-                            Preview
+                        <div className="flex h-full items-center justify-center bg-[radial-gradient(circle_at_top_left,#ffffff,transparent_42%),linear-gradient(135deg,#f4f4f5,#e4e4e7)]">
+                          <div className="flex h-14 w-14 items-center justify-center rounded-2xl border border-white/70 bg-white/85 shadow-sm">
+                            <FileTypeIcon type={file.type} />
                           </div>
                         </div>
                       )}
@@ -294,7 +910,7 @@ export default function DashboardPage() {
                     </div>
 
                     {/* Info + actions */}
-                    <div className="flex flex-1 flex-col gap-3 px-4 py-3">
+                    <div className="flex flex-1 flex-col gap-2 px-3 py-3">
                       <div className="flex items-start justify-between gap-2">
                         <p className="line-clamp-1 text-sm font-medium text-zinc-900">
                           {file.name}
@@ -310,11 +926,11 @@ export default function DashboardPage() {
                             <Button
                               variant="outline"
                               size="sm"
-                              className="h-8 flex-1 rounded-lg text-xs"
+                              className="h-7 flex-1 rounded-lg px-2 text-xs"
                               disabled={!file.url}
                               onClick={() => file.url && setPreviewFile(file)}
                             >
-                              <Eye className="mr-1.5 h-3.5 w-3.5" />
+                              <Eye className="mr-1 h-3.5 w-3.5" />
                               Preview
                             </Button>
 
@@ -322,18 +938,26 @@ export default function DashboardPage() {
                               asChild
                               variant="ghost"
                               size="sm"
-                              className="h-8 rounded-lg px-3 text-zinc-400 hover:bg-zinc-100 hover:text-zinc-700"
+                              className="h-7 rounded-lg px-2 text-zinc-400 hover:bg-zinc-100 hover:text-zinc-700"
                               disabled={!file.url}
                             >
                               <a href={file.url ?? "#"} download={file.name} target="_blank" rel="noreferrer">
                                 <Download className="h-3.5 w-3.5" />
                               </a>
                             </Button>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="h-7 rounded-lg px-2 text-zinc-400 hover:bg-zinc-100 hover:text-zinc-700"
+                              onClick={() => openRenameDialog(file)}
+                            >
+                              <Pencil className="h-3.5 w-3.5" />
+                            </Button>
 
                             <Button
                               variant="ghost"
                               size="sm"
-                              className="h-8 rounded-lg px-3 text-zinc-400 hover:bg-red-50 hover:text-red-500"
+                              className="h-7 rounded-lg px-2 text-zinc-400 hover:bg-red-50 hover:text-red-500"
                               onClick={async () => {
                                 try {
                                   await deleteFile({ fileId: file._id });
@@ -351,7 +975,7 @@ export default function DashboardPage() {
                             <Button
                               variant="outline"
                               size="sm"
-                              className="h-8 flex-1 rounded-lg text-xs"
+                              className="h-7 flex-1 rounded-lg px-2 text-xs"
                               onClick={async () => {
                                 try {
                                   await restoreFile({ fileId: file._id });
@@ -367,7 +991,7 @@ export default function DashboardPage() {
                             <Button
                               variant="ghost"
                               size="sm"
-                              className="h-8 rounded-lg px-3 text-zinc-400 hover:bg-red-50 hover:text-red-500"
+                              className="h-7 rounded-lg px-2 text-zinc-400 hover:bg-red-50 hover:text-red-500"
                               onClick={async () => {
                                 try {
                                   await permanentlyDeleteFile({ fileId: file._id });
@@ -470,31 +1094,57 @@ export default function DashboardPage() {
                 </object>
               )}
 
-              {/* CSV — no in-browser preview */}
-              {previewFile.type === "csv" && (
+              {/* Video preview */}
+              {previewFile.type === "video" && previewFile.url && (
+                <video
+                  src={previewFile.url}
+                  controls
+                  className="max-h-[75vh] max-w-full bg-black"
+                />
+              )}
+
+              {/* Audio preview */}
+              {previewFile.type === "audio" && previewFile.url && (
+                <div className="flex w-full max-w-xl flex-col items-center gap-4 p-10 text-center">
+                  <div className="flex h-14 w-14 items-center justify-center rounded-xl border border-zinc-200 bg-white">
+                    <Music className="h-7 w-7 text-fuchsia-500" />
+                  </div>
+                  <p className="text-sm font-medium text-zinc-700">
+                    {previewFile.name}
+                  </p>
+                  <audio src={previewFile.url} controls className="w-full" />
+                </div>
+              )}
+
+              {/* Documents and spreadsheets */}
+              {["document", "spreadsheet"].includes(previewFile.type) && (
                 <div className="flex flex-col items-center gap-4 p-10 text-center">
                   <div className="flex h-14 w-14 items-center justify-center rounded-xl border border-zinc-200 bg-white">
-                    <FileSpreadsheet className="h-7 w-7 text-emerald-500" />
+                    {previewFile.type === "spreadsheet" ? (
+                      <FileSpreadsheet className="h-7 w-7 text-emerald-500" />
+                    ) : (
+                      <FileText className="h-7 w-7 text-indigo-500" />
+                    )}
                   </div>
                   <div>
                     <p className="text-sm font-medium text-zinc-700">
-                      CSV files cannot be previewed directly
+                      Preview is not available for this file type
                     </p>
                     <p className="mt-1 text-sm text-zinc-400">
-                      Download the file to open it in a spreadsheet app
+                      Download the file to open it in the right app
                     </p>
                   </div>
                   <Button asChild variant="outline" size="sm" className="rounded-lg">
                     <a href={previewFile.url ?? "#"} download={previewFile.name} target="_blank" rel="noreferrer">
                       <Download className="mr-1.5 h-3.5 w-3.5" />
-                      Download CSV
+                      Download
                     </a>
                   </Button>
                 </div>
               )}
 
               {/* Fallback */}
-              {!["image", "pdf", "csv"].includes(previewFile.type) && (
+              {!["image", "pdf", "document", "spreadsheet", "audio", "video"].includes(previewFile.type) && (
                 <div className="flex flex-col items-center gap-4 p-10 text-center">
                   <div className="flex h-14 w-14 items-center justify-center rounded-xl border border-zinc-200 bg-white">
                     <FolderOpen className="h-7 w-7 text-zinc-400" />
@@ -521,7 +1171,262 @@ export default function DashboardPage() {
           </div>
         </div>
       )}
+
+      <Dialog
+        open={!!renamingFile}
+        onOpenChange={(isOpen) => {
+          if (!isOpen) {
+            setRenamingFile(null);
+            setRenameValue("");
+          }
+        }}
+      >
+        <DialogContent className="gap-5 p-5 sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="text-xl">Rename file</DialogTitle>
+          </DialogHeader>
+          <form onSubmit={submitRename} className="space-y-5">
+            <div className="space-y-2">
+              <label
+                htmlFor="rename-file-name"
+                className="text-sm font-medium text-zinc-700"
+              >
+                Name
+              </label>
+              <Input
+                id="rename-file-name"
+                value={renameValue}
+                onChange={(event) => setRenameValue(event.target.value)}
+                autoFocus
+                placeholder="Enter a file name"
+              />
+            </div>
+            <div className="flex justify-end gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => {
+                  setRenamingFile(null);
+                  setRenameValue("");
+                }}
+              >
+                Cancel
+              </Button>
+              <Button type="submit" disabled={isRenaming}>
+                {isRenaming ? "Renaming..." : "Rename"}
+              </Button>
+            </div>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={!!renamingFolder}
+        onOpenChange={(isOpen) => {
+          if (!isOpen) {
+            setRenamingFolder(null);
+            setFolderRenameValue("");
+          }
+        }}
+      >
+        <DialogContent className="gap-5 p-5 sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="text-xl">Rename folder</DialogTitle>
+          </DialogHeader>
+          <form onSubmit={submitFolderRename} className="space-y-5">
+            <div className="space-y-2">
+              <label
+                htmlFor="rename-folder-name"
+                className="text-sm font-medium text-zinc-700"
+              >
+                Name
+              </label>
+              <Input
+                id="rename-folder-name"
+                value={folderRenameValue}
+                onChange={(event) => setFolderRenameValue(event.target.value)}
+                autoFocus
+                placeholder="Enter a folder name"
+              />
+            </div>
+            <div className="flex justify-end gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => {
+                  setRenamingFolder(null);
+                  setFolderRenameValue("");
+                }}
+              >
+                Cancel
+              </Button>
+              <Button type="submit" disabled={isRenamingFolder}>
+                {isRenamingFolder ? "Renaming..." : "Rename"}
+              </Button>
+            </div>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={isFolderDialogOpen}
+        onOpenChange={(isOpen) => {
+          setIsFolderDialogOpen(isOpen);
+          if (!isOpen) setFolderName("");
+        }}
+      >
+        <DialogContent className="gap-5 p-5 sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="text-xl">New folder</DialogTitle>
+          </DialogHeader>
+          <form onSubmit={submitFolder} className="space-y-5">
+            <div className="space-y-2">
+              <label
+                htmlFor="folder-name"
+                className="text-sm font-medium text-zinc-700"
+              >
+                Name
+              </label>
+              <Input
+                id="folder-name"
+                value={folderName}
+                onChange={(event) => setFolderName(event.target.value)}
+                autoFocus
+                placeholder="Folder name"
+              />
+            </div>
+            <div className="flex justify-end gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setIsFolderDialogOpen(false)}
+              >
+                Cancel
+              </Button>
+              <Button type="submit" disabled={isCreatingFolder}>
+                {isCreatingFolder ? "Creating..." : "Create"}
+              </Button>
+            </div>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={!!folderPendingDelete}
+        onOpenChange={(isOpen) => {
+          if (!isOpen) {
+            setFolderPendingDelete(null);
+          }
+        }}
+      >
+        <DialogContent className="gap-4 p-5 sm:max-w-md" showCloseButton={false}>
+          <DialogHeader className="gap-2">
+            <DialogTitle className="text-xl">Delete folder?</DialogTitle>
+            <DialogDescription>
+              {folderPendingDelete
+                ? `Move "${folderPendingDelete.name}" to trash? The folder will be removed and files inside it will be moved back to Files.`
+                : ""}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="border-0 bg-transparent p-0 pt-2">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setFolderPendingDelete(null)}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              variant="destructive"
+              disabled={!folderPendingDelete || deletingFolderId === folderPendingDelete.id}
+              onClick={handleDeleteFolder}
+            >
+              {folderPendingDelete && deletingFolderId === folderPendingDelete.id
+                ? "Deleting..."
+                : "Move to trash"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </>
+  );
+}
+
+function FolderActionsMenu({
+  isFavorite,
+  isOpen,
+  isDeleting,
+  onToggle,
+  onRename,
+  onToggleFavorite,
+  onDelete,
+}: {
+  isFavorite: boolean;
+  isOpen: boolean;
+  isDeleting: boolean;
+  onToggle: () => void;
+  onRename: () => void;
+  onToggleFavorite: () => void;
+  onDelete: () => void;
+}) {
+  return (
+    <div className="relative shrink-0" data-folder-menu>
+      <Button
+        type="button"
+        variant="ghost"
+        size="icon-sm"
+        className="text-zinc-500 hover:bg-zinc-100 hover:text-zinc-900"
+        aria-haspopup="menu"
+        aria-expanded={isOpen}
+        disabled={isDeleting}
+        onClick={(event) => {
+          event.stopPropagation();
+          onToggle();
+        }}
+      >
+        <MoreVertical className="h-4 w-4" />
+      </Button>
+
+      {isOpen && (
+        <div className="absolute right-0 top-10 z-30 min-w-52 overflow-hidden rounded-xl border border-zinc-200 bg-white py-1 shadow-xl shadow-zinc-200/70">
+          <button
+            type="button"
+            className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-zinc-700 transition-colors hover:bg-zinc-50"
+            onClick={(event) => {
+              event.stopPropagation();
+              onRename();
+            }}
+          >
+            <Pencil className="h-4 w-4" />
+            Rename
+          </button>
+          <button
+            type="button"
+            className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-zinc-700 transition-colors hover:bg-zinc-50"
+            onClick={(event) => {
+              event.stopPropagation();
+              onToggleFavorite();
+            }}
+          >
+            <Star className={`h-4 w-4 ${isFavorite ? "fill-yellow-400 text-yellow-400" : ""}`} />
+            {isFavorite ? "Remove from starred" : "Add to starred"}
+          </button>
+          <div className="my-1 h-px bg-zinc-100" />
+          <button
+            type="button"
+            className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-red-600 transition-colors hover:bg-red-50"
+            onClick={(event) => {
+              event.stopPropagation();
+              onDelete();
+            }}
+          >
+            <Trash2 className="h-4 w-4" />
+            Move to trash
+          </button>
+        </div>
+      )}
+    </div>
   );
 }
 

@@ -18,6 +18,10 @@ function isFileOwner(file: { userId?: string; orgId: string }, identity: { subje
   return (file.userId ?? "") === identity.subject || file.orgId === identity.subject;
 }
 
+function isFolderOwner(folder: { userId?: string; orgId: string }, identity: { subject: string }) {
+  return (folder.userId ?? "") === identity.subject || folder.orgId === identity.subject;
+}
+
 export const generateUploadUrl = mutation({
   args: {},
   handler: async (ctx) => {
@@ -36,7 +40,15 @@ export const createFile = mutation({
     name: v.string(),
     orgId: v.string(),
     fileId: v.id("_storage"),
-    type: v.union(v.literal("image"), v.literal("csv"), v.literal("pdf")),
+    folderId: v.optional(v.id("folders")),
+    type: v.union(
+      v.literal("image"),
+      v.literal("pdf"),
+      v.literal("document"),
+      v.literal("spreadsheet"),
+      v.literal("audio"),
+      v.literal("video")
+    ),
   },
   handler: async (ctx, args) => {
     const identity = await ctx.auth.getUserIdentity();
@@ -50,6 +62,7 @@ export const createFile = mutation({
       orgId: args.orgId,
       userId: identity.subject,
       fileId: args.fileId,
+      folderId: args.folderId,
       type: args.type,
       isFavorite: false,
       shouldDelete: false,
@@ -189,6 +202,226 @@ export const toggleFavorite = mutation({
 
     await ctx.db.patch(args.fileId, {
       isFavorite: !(file.isFavorite ?? false),
+    });
+  },
+});
+
+export const createFolder = mutation({
+  args: {
+    name: v.string(),
+    orgId: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const identity = await ctx.auth.getUserIdentity();
+
+    if (!identity) {
+      throw new Error("you must be logged in");
+    }
+
+    const name = args.name.trim();
+
+    if (!name) {
+      throw new Error("Folder name is required");
+    }
+
+    if (name.length > 100) {
+      throw new Error("Folder name is too long");
+    }
+
+    await ctx.db.insert("folders", {
+      name,
+      orgId: args.orgId,
+      userId: identity.subject,
+      isFavorite: false,
+    });
+  },
+});
+
+export const getFolders = query({
+  args: {
+    orgId: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const identity = await ctx.auth.getUserIdentity();
+
+    if (!identity) {
+      return [];
+    }
+
+    return await ctx.db
+      .query("folders")
+      .filter((q) => q.eq(q.field("orgId"), args.orgId))
+      .collect()
+      .then((folders) =>
+        folders.map((folder) => ({
+          ...folder,
+          isFavorite: folder.isFavorite ?? false,
+        }))
+      );
+  },
+});
+
+export const toggleFavoriteFolder = mutation({
+  args: {
+    folderId: v.id("folders"),
+  },
+  handler: async (ctx, args) => {
+    const identity = await ctx.auth.getUserIdentity();
+
+    if (!identity) {
+      throw new Error("you must be logged in");
+    }
+
+    const folder = await ctx.db.get(args.folderId);
+
+    if (!folder) {
+      throw new Error("Folder not found");
+    }
+
+    await ctx.db.patch(args.folderId, {
+      isFavorite: !(folder.isFavorite ?? false),
+    });
+  },
+});
+
+export const deleteFolder = mutation({
+  args: {
+    folderId: v.id("folders"),
+  },
+  handler: async (ctx, args) => {
+    const identity = await ctx.auth.getUserIdentity();
+
+    if (!identity) {
+      throw new Error("you must be logged in");
+    }
+
+    const folder = await ctx.db.get(args.folderId);
+
+    if (!folder) {
+      throw new Error("Folder not found");
+    }
+
+    const personalWorkspace = isPersonalWorkspace(folder.orgId);
+    const owner = isFolderOwner(folder, identity);
+    const admin = isOrgAdmin(identity.orgRole);
+
+    if (personalWorkspace) {
+      if (!owner) {
+        throw new Error("You can only delete your own folders");
+      }
+    } else {
+      if (!admin && !owner) {
+        throw new Error("Only the creator or organization admin can delete folders");
+      }
+    }
+
+    const files = await ctx.db
+      .query("files")
+      .filter((q) => q.eq(q.field("folderId"), args.folderId))
+      .collect();
+
+    for (const file of files) {
+      await ctx.db.patch(file._id, {
+        folderId: undefined,
+      });
+    }
+
+    await ctx.db.delete(args.folderId);
+  },
+});
+
+export const renameFile = mutation({
+  args: {
+    fileId: v.id("files"),
+    name: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const identity = await ctx.auth.getUserIdentity();
+
+    if (!identity) {
+      throw new Error("you must be logged in");
+    }
+
+    const file = await ctx.db.get(args.fileId);
+
+    if (!file) {
+      throw new Error("File not found");
+    }
+
+    const name = args.name.trim();
+
+    if (!name) {
+      throw new Error("Name is required");
+    }
+
+    if (name.length > 200) {
+      throw new Error("Name is too long");
+    }
+
+    const personalWorkspace = isPersonalWorkspace(file.orgId);
+    const owner = isFileOwner(file, identity);
+    const admin = isOrgAdmin(identity.orgRole);
+
+    if (personalWorkspace) {
+      if (!owner) {
+        throw new Error("You can only rename your own files");
+      }
+    } else {
+      if (!admin && !owner) {
+        throw new Error("Only the uploader or organization admin can rename files");
+      }
+    }
+
+    await ctx.db.patch(args.fileId, {
+      name,
+    });
+  },
+});
+
+export const renameFolder = mutation({
+  args: {
+    folderId: v.id("folders"),
+    name: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const identity = await ctx.auth.getUserIdentity();
+
+    if (!identity) {
+      throw new Error("you must be logged in");
+    }
+
+    const folder = await ctx.db.get(args.folderId);
+
+    if (!folder) {
+      throw new Error("Folder not found");
+    }
+
+    const name = args.name.trim();
+
+    if (!name) {
+      throw new Error("Name is required");
+    }
+
+    if (name.length > 100) {
+      throw new Error("Name is too long");
+    }
+
+    const personalWorkspace = isPersonalWorkspace(folder.orgId);
+    const owner = isFolderOwner(folder, identity);
+    const admin = isOrgAdmin(identity.orgRole);
+
+    if (personalWorkspace) {
+      if (!owner) {
+        throw new Error("You can only rename your own folders");
+      }
+    } else {
+      if (!admin && !owner) {
+        throw new Error("Only the creator or organization admin can rename folders");
+      }
+    }
+
+    await ctx.db.patch(args.folderId, {
+      name,
     });
   },
 });
