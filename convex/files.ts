@@ -14,6 +14,12 @@ function isPersonalWorkspace(orgId: string) {
   return orgId.startsWith("user_");
 }
 
+function canAccessWorkspace(orgId: string, identity: { subject: string; orgId?: string }) {
+  return isPersonalWorkspace(orgId)
+    ? orgId === identity.subject
+    : orgId === identity.orgId;
+}
+
 function isFileOwner(file: { userId?: string; orgId: string }, identity: { subject: string }) {
   return (file.userId ?? "") === identity.subject || file.orgId === identity.subject;
 }
@@ -57,6 +63,10 @@ export const createFile = mutation({
       throw new Error("you must be logged in");
     }
 
+    if (!canAccessWorkspace(args.orgId, identity)) {
+      throw new Error("You do not have access to this workspace");
+    }
+
     await ctx.db.insert("files", {
       name: args.name,
       orgId: args.orgId,
@@ -91,6 +101,10 @@ export const deleteFile = mutation({
     const personalWorkspace = isPersonalWorkspace(file.orgId);
     const owner = isFileOwner(file, identity);
     const admin = isOrgAdmin(identity.orgRole);
+
+    if (!canAccessWorkspace(file.orgId, identity)) {
+      throw new Error("You do not have access to this file");
+    }
 
     if (personalWorkspace) {
       if (!owner) {
@@ -130,6 +144,10 @@ export const restoreFile = mutation({
     const owner = isFileOwner(file, identity);
     const admin = isOrgAdmin(identity.orgRole);
 
+    if (!canAccessWorkspace(file.orgId, identity)) {
+      throw new Error("You do not have access to this file");
+    }
+
     if (personalWorkspace) {
       if (!owner) {
         throw new Error("You can only restore your own files");
@@ -168,6 +186,10 @@ export const permanentlyDeleteFile = mutation({
     const owner = isFileOwner(file, identity);
     const admin = isOrgAdmin(identity.orgRole);
 
+    if (!canAccessWorkspace(file.orgId, identity)) {
+      throw new Error("You do not have access to this file");
+    }
+
     if (personalWorkspace) {
       if (!owner) {
         throw new Error("You can only permanently delete your own files");
@@ -200,6 +222,10 @@ export const toggleFavorite = mutation({
       throw new Error("File not found");
     }
 
+    if (!canAccessWorkspace(file.orgId, identity)) {
+      throw new Error("You do not have access to this file");
+    }
+
     await ctx.db.patch(args.fileId, {
       isFavorite: !(file.isFavorite ?? false),
     });
@@ -216,6 +242,10 @@ export const createFolder = mutation({
 
     if (!identity) {
       throw new Error("you must be logged in");
+    }
+
+    if (!canAccessWorkspace(args.orgId, identity)) {
+      throw new Error("You do not have access to this workspace");
     }
 
     const name = args.name.trim();
@@ -245,6 +275,10 @@ export const getFolders = query({
     const identity = await ctx.auth.getUserIdentity();
 
     if (!identity) {
+      return [];
+    }
+
+    if (!canAccessWorkspace(args.orgId, identity)) {
       return [];
     }
 
@@ -278,6 +312,10 @@ export const toggleFavoriteFolder = mutation({
       throw new Error("Folder not found");
     }
 
+    if (!canAccessWorkspace(folder.orgId, identity)) {
+      throw new Error("You do not have access to this folder");
+    }
+
     await ctx.db.patch(args.folderId, {
       isFavorite: !(folder.isFavorite ?? false),
     });
@@ -304,6 +342,10 @@ export const deleteFolder = mutation({
     const personalWorkspace = isPersonalWorkspace(folder.orgId);
     const owner = isFolderOwner(folder, identity);
     const admin = isOrgAdmin(identity.orgRole);
+
+    if (!canAccessWorkspace(folder.orgId, identity)) {
+      throw new Error("You do not have access to this folder");
+    }
 
     if (personalWorkspace) {
       if (!owner) {
@@ -362,6 +404,10 @@ export const renameFile = mutation({
     const owner = isFileOwner(file, identity);
     const admin = isOrgAdmin(identity.orgRole);
 
+    if (!canAccessWorkspace(file.orgId, identity)) {
+      throw new Error("You do not have access to this file");
+    }
+
     if (personalWorkspace) {
       if (!owner) {
         throw new Error("You can only rename your own files");
@@ -410,6 +456,10 @@ export const renameFolder = mutation({
     const owner = isFolderOwner(folder, identity);
     const admin = isOrgAdmin(identity.orgRole);
 
+    if (!canAccessWorkspace(folder.orgId, identity)) {
+      throw new Error("You do not have access to this folder");
+    }
+
     if (personalWorkspace) {
       if (!owner) {
         throw new Error("You can only rename your own folders");
@@ -435,6 +485,10 @@ export const getFiles = query({
     const identity = await ctx.auth.getUserIdentity();
 
     if (!identity) {
+      return [];
+    }
+
+    if (!canAccessWorkspace(args.orgId, identity)) {
       return [];
     }
 
