@@ -1057,9 +1057,12 @@ export default function DashboardPage() {
               {/* Image preview */}
               {previewFile.type === "image" && previewFile.url && (
                 <div className="flex h-full w-full items-center justify-center p-6">
-                  <img
+                  <Image
                     src={previewFile.url}
                     alt={previewFile.name}
+                    width={1200}
+                    height={900}
+                    unoptimized
                     className="max-h-[70vh] max-w-full rounded-lg object-contain shadow-sm"
                   />
                 </div>
