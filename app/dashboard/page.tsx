@@ -1014,6 +1014,15 @@ export default function DashboardPage() {
                         </div>
                       )}
 
+                      {file.url && (
+                        <div className="absolute inset-0 flex items-center justify-center bg-zinc-950/0 opacity-0 transition-all duration-150 group-hover:bg-zinc-950/35 group-hover:opacity-100">
+                          <span className="flex items-center gap-1.5 rounded-full bg-white px-3 py-1.5 text-xs font-medium text-zinc-900 shadow-sm">
+                            <Eye className="h-3.5 w-3.5" />
+                            Preview
+                          </span>
+                        </div>
+                      )}
+
                       {/* Favourite star */}
                       {activeView !== "trash" && (
                         <button
@@ -1053,35 +1062,13 @@ export default function DashboardPage() {
                         </span>
                       </div>
 
-                      <div className="flex gap-2">
+                      <div className="flex flex-wrap gap-2">
                         {activeView !== "trash" ? (
                           <>
                             <Button
                               variant="outline"
                               size="sm"
-                            className="h-8 flex-1 rounded-lg px-2.5 text-sm"
-                              disabled={!file.url}
-                              onClick={() => file.url && setPreviewFile(file)}
-                            >
-                              <Eye className="mr-1 h-3.5 w-3.5" />
-                              Preview
-                            </Button>
-
-                            <Button
-                              asChild
-                              variant="ghost"
-                              size="sm"
-                              className="h-7 rounded-lg px-2 text-zinc-400 hover:bg-zinc-100 hover:text-zinc-700"
-                              disabled={!file.url}
-                            >
-                              <a href={file.url ?? "#"} download={file.name} target="_blank" rel="noreferrer">
-                                <Download className="h-3.5 w-3.5" />
-                              </a>
-                            </Button>
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              className="h-8 rounded-lg px-2.5 text-xs"
+                              className="h-8 flex-1 rounded-lg px-2.5 text-xs"
                               disabled={!file.url}
                               onClick={() => {
                                 setSharingFile(file);
@@ -1093,9 +1080,20 @@ export default function DashboardPage() {
                               Share
                             </Button>
                             <Button
+                              asChild
                               variant="ghost"
                               size="sm"
-                              className="h-7 rounded-lg px-2 text-zinc-400 hover:bg-zinc-100 hover:text-zinc-700"
+                              className="h-8 flex-1 rounded-lg px-2 text-zinc-400 hover:bg-zinc-100 hover:text-zinc-700"
+                              disabled={!file.url}
+                            >
+                              <a href={file.url ?? "#"} download={file.name} target="_blank" rel="noreferrer">
+                                <Download className="h-3.5 w-3.5" />
+                              </a>
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="h-8 flex-1 rounded-lg px-2 text-zinc-400 hover:bg-zinc-100 hover:text-zinc-700"
                               disabled={!canManageFile(file)}
                               onClick={() => openRenameDialog(file)}
                             >
@@ -1105,7 +1103,7 @@ export default function DashboardPage() {
                             <Button
                               variant="ghost"
                               size="sm"
-                              className="h-7 rounded-lg px-2 text-zinc-400 hover:bg-red-50 hover:text-red-500"
+                              className="h-8 flex-1 rounded-lg px-2 text-zinc-400 hover:bg-red-50 hover:text-red-500"
                               disabled={!canManageFile(file)}
                               onClick={async () => {
                                 try {
