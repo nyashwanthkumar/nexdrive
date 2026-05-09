@@ -35,6 +35,7 @@ import {
   List,
   Link2,
   Loader2,
+  Menu,
   MoreVertical,
   Music,
   Pencil,
@@ -122,6 +123,7 @@ export default function DashboardPage() {
   const [shareDuration, setShareDuration] = useState("24");
   const [shareUrl, setShareUrl] = useState("");
   const [isCreatingShareLink, setIsCreatingShareLink] = useState(false);
+  const [isMobileNavOpen, setIsMobileNavOpen] = useState(false);
 
   const orgId = organization?.id ?? user?.id;
 
@@ -423,12 +425,26 @@ export default function DashboardPage() {
         <div className="grid min-h-[calc(100vh-64px)] grid-cols-1 lg:grid-cols-[220px_minmax(0,1fr)]">
 
             {/* Sidebar */}
-          <aside className="flex flex-col gap-3 border-b border-zinc-200/80 bg-white px-3 py-3 lg:border-b-0 lg:border-r lg:py-5">
-            <div className="px-1 lg:mb-2">
+          <aside className="relative flex flex-col gap-3 border-b border-zinc-200/80 bg-white px-3 py-3 lg:border-b-0 lg:border-r lg:py-5">
+            <div className="flex items-center gap-2 px-1 lg:mb-2">
+              <button
+                type="button"
+                aria-label="Open sections"
+                aria-expanded={isMobileNavOpen}
+                onClick={() => setIsMobileNavOpen((open) => !open)}
+                className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl border border-zinc-200 bg-white text-zinc-700 shadow-sm shadow-zinc-200/60 transition hover:bg-zinc-50 lg:hidden"
+              >
+                {isMobileNavOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
+              </button>
               <UploadButton folders={folders ?? []} />
             </div>
 
-            <nav className="flex gap-2 overflow-x-auto pb-1 lg:block lg:space-y-0.5 lg:overflow-visible lg:pb-0">
+            <nav
+              onClick={() => setIsMobileNavOpen(false)}
+              className={`absolute left-3 right-3 top-[72px] z-30 rounded-2xl border border-zinc-200 bg-white p-2 shadow-xl shadow-zinc-200/70 lg:static lg:block lg:rounded-none lg:border-0 lg:bg-transparent lg:p-0 lg:shadow-none ${
+                isMobileNavOpen ? "grid gap-1" : "hidden"
+              } lg:space-y-0.5`}
+            >
               <SidebarItem
                 active={activeView === "recent"}
                 icon={<Clock className="h-4 w-4" />}
@@ -1672,7 +1688,7 @@ function SidebarItem({
   return (
     <button
       onClick={onClick}
-      className={`flex w-auto shrink-0 items-center gap-2.5 rounded-lg px-3 py-2.5 text-left text-sm transition-colors lg:w-full ${
+      className={`flex w-full items-center gap-2.5 rounded-lg px-3 py-2.5 text-left text-sm transition-colors ${
         active
           ? "bg-zinc-900 font-medium text-white"
           : "text-zinc-600 hover:bg-zinc-50 hover:text-zinc-900"
