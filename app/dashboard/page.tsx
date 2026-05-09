@@ -17,12 +17,14 @@ import {
 } from "@/components/ui/dialog";
 import type { Id } from "@/convex/_generated/dataModel";
 import {
+  Activity,
   ArrowDownAZ,
   ArrowDownZA,
   ArrowUpDown,
   Building2,
   Check,
   Clock,
+  Copy,
   Download,
   Eye,
   FileSpreadsheet,
@@ -31,6 +33,7 @@ import {
   Grid2X2,
   ImageIcon,
   List,
+  Link2,
   Loader2,
   MoreVertical,
   Music,
@@ -57,7 +60,8 @@ type ViewType =
   | "music"
   | "documents"
   | "pdfs"
-  | "trash";
+  | "trash"
+  | "activity";
 type DisplayMode = "grid" | "list";
 type SortMode = "newest" | "oldest" | "nameAsc" | "nameDesc";
 
@@ -65,6 +69,8 @@ type FileItem = {
   _id: Id<"files">;
   _creationTime: number;
   name: string;
+  orgId: string;
+  userId?: string;
   type: string;
   url?: string | null;
   isFavorite?: boolean;
@@ -86,6 +92,7 @@ export default function DashboardPage() {
   const deleteFolder = useMutation(api.files.deleteFolder);
   const renameFolder = useMutation(api.files.renameFolder);
   const toggleFavoriteFolder = useMutation(api.files.toggleFavoriteFolder);
+  const createShareLink = useMutation(api.files.createShareLink);
 
   const [search, setSearch] = useState("");
   const [activeView, setActiveView] = useState<ViewType>("recent");
@@ -111,6 +118,10 @@ export default function DashboardPage() {
     id: Id<"folders">;
     name: string;
   } | null>(null);
+  const [sharingFile, setSharingFile] = useState<FileItem | null>(null);
+  const [shareDuration, setShareDuration] = useState("24");
+  const [shareUrl, setShareUrl] = useState("");
+  const [isCreatingShareLink, setIsCreatingShareLink] = useState(false);
 
   const orgId = organization?.id ?? user?.id;
 
@@ -126,6 +137,12 @@ export default function DashboardPage() {
 
   const folders = useQuery(
     api.files.getFolders,
+    orgId ? { orgId } : "skip"
+  );
+
+  const userRole = useQuery(api.files.getUserRole, orgId ? {} : "skip");
+  const activityLogs = useQuery(
+    api.files.getActivityLogs,
     orgId ? { orgId } : "skip"
   );
 
@@ -168,6 +185,7 @@ export default function DashboardPage() {
           : !file.folderId;
 
       if (activeView === "starred") return matchesSearch && file.isFavorite;
+      if (activeView === "activity") return false;
       if (activeView === "folders") {
         return currentFolderId ? matchesSearch && matchesFolder : false;
       }
@@ -222,6 +240,7 @@ export default function DashboardPage() {
     documents: { label: "Documents", description: "Documents in this workspace" },
     pdfs: { label: "PDFs", description: "PDF files in this workspace" },
     trash: { label: "Trash", description: "Restore or permanently remove deleted files" },
+    activity: { label: "Recent activity", description: "Latest file changes in this workspace" },
   }[activeView];
 
   const visibleFolders =
@@ -348,18 +367,68 @@ export default function DashboardPage() {
     }
   }
 
+  function createToken() {
+    const randomId =
+      typeof crypto !== "undefined" && "randomUUID" in crypto
+        ? crypto.randomUUID().replaceAll("-", "")
+        : Math.random().toString(36).slice(2);
+
+    return `${randomId}${Math.random().toString(36).slice(2, 10)}`;
+  }
+
+  async function submitShareLink(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+
+    if (!sharingFile) return;
+
+    try {
+      setIsCreatingShareLink(true);
+      const token = createToken();
+      const expiresAt = Date.now() + Number(shareDuration) * 60 * 60 * 1000;
+
+      await createShareLink({
+        fileId: sharingFile._id,
+        token,
+        expiresAt,
+      });
+
+      const url = `${window.location.origin}/share/${token}`;
+      setShareUrl(url);
+      await navigator.clipboard?.writeText(url);
+      toast.success("Share link copied");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Failed to create share link");
+    } finally {
+      setIsCreatingShareLink(false);
+    }
+  }
+
+  const isWorkspaceAdmin = userRole === "org:admin" || userRole === "admin";
+
+  function canManageFile(file: FileItem) {
+    if (!user?.id) return false;
+    const owner = (file.userId ?? "") === user.id || file.orgId === user.id;
+    return organization ? isWorkspaceAdmin || owner : owner;
+  }
+
+  function canManageFolder(folder: { orgId: string; userId?: string }) {
+    if (!user?.id) return false;
+    const owner = (folder.userId ?? "") === user.id || folder.orgId === user.id;
+    return organization ? isWorkspaceAdmin || owner : owner;
+  }
+
   return (
     <>
       <main className="min-h-[calc(100vh-64px)] bg-[#f6f7f9]">
         <div className="grid min-h-[calc(100vh-64px)] grid-cols-1 lg:grid-cols-[220px_minmax(0,1fr)]">
 
             {/* Sidebar */}
-          <aside className="flex flex-col border-r border-zinc-200/80 bg-white px-3 py-5">
-            <div className="mb-5 px-1">
+          <aside className="flex flex-col gap-3 border-b border-zinc-200/80 bg-white px-3 py-3 lg:border-b-0 lg:border-r lg:py-5">
+            <div className="px-1 lg:mb-2">
               <UploadButton folders={folders ?? []} />
             </div>
 
-            <nav className="space-y-0.5">
+            <nav className="flex gap-2 overflow-x-auto pb-1 lg:block lg:space-y-0.5 lg:overflow-visible lg:pb-0">
               <SidebarItem
                 active={activeView === "recent"}
                 icon={<Clock className="h-4 w-4" />}
@@ -379,6 +448,15 @@ export default function DashboardPage() {
                 }}
               />
               <SidebarItem
+                active={activeView === "activity"}
+                icon={<Activity className="h-4 w-4" />}
+                label="Activity"
+                onClick={() => {
+                  setActiveView("activity");
+                  setCurrentFolderId(null);
+                }}
+              />
+              <SidebarItem
                 active={activeView === "folders"}
                 icon={<FolderOpen className="h-4 w-4" />}
                 label="Folders"
@@ -387,7 +465,7 @@ export default function DashboardPage() {
                   setCurrentFolderId(null);
                 }}
               />
-              <div className="my-3 h-px bg-zinc-100" />
+              <div className="hidden lg:my-3 lg:block lg:h-px lg:bg-zinc-100" />
               <SidebarItem
                 active={activeView === "images"}
                 icon={<ImageIcon className="h-4 w-4" />}
@@ -444,7 +522,7 @@ export default function DashboardPage() {
               />
             </nav>
 
-            <div className="mt-auto border-t border-zinc-100 pt-4">
+            <div className="mt-auto hidden border-t border-zinc-100 pt-4 lg:block">
               <p className="mb-2 px-3 text-[10px] font-semibold uppercase tracking-widest text-zinc-400">
                 Workspace
               </p>
@@ -464,7 +542,7 @@ export default function DashboardPage() {
           </aside>
 
           {/* Content */}
-          <section className="flex flex-col gap-5 px-6 py-6">
+          <section className="flex flex-col gap-4 px-4 py-4 sm:gap-5 sm:px-6 sm:py-6">
 
             {/* Search */}
             <div className="flex items-center gap-3 rounded-2xl border border-zinc-200/80 bg-white px-4 py-2.5 shadow-sm shadow-zinc-200/40">
@@ -483,7 +561,7 @@ export default function DashboardPage() {
                 <h1 className="text-xl font-semibold tracking-tight text-zinc-950">{viewMeta.label}</h1>
                 <p className="mt-0.5 text-xs text-zinc-500">{viewMeta.description}</p>
               </div>
-              <div className="flex items-center gap-3">
+              <div className="flex flex-wrap items-center gap-3">
                 {activeView === "folders" && !currentFolderId && (
                   <Button
                     variant="outline"
@@ -567,11 +645,16 @@ export default function DashboardPage() {
             )}
 
             {/* Empty state */}
-            {!isLoading && displayedFiles.length === 0 && visibleFolders.length === 0 && (
+            {!isLoading &&
+              displayedFiles.length === 0 &&
+              visibleFolders.length === 0 &&
+              (activeView !== "activity" || (activityLogs ?? []).length === 0) && (
               <div className="flex flex-1 flex-col items-center justify-center gap-3 py-24 text-center">
                 <div className="flex h-11 w-11 items-center justify-center rounded-xl border border-zinc-200 bg-white">
                   {activeView === "trash" ? (
                     <Trash2 className="h-5 w-5 text-zinc-400" />
+                  ) : activeView === "activity" ? (
+                    <Activity className="h-5 w-5 text-zinc-400" />
                   ) : activeView === "starred" ? (
                     <Star className="h-5 w-5 text-zinc-400" />
                   ) : activeView === "folders" ? (
@@ -594,6 +677,8 @@ export default function DashboardPage() {
                   <p className="text-sm font-medium text-zinc-700">
                     {activeView === "trash"
                       ? "Trash is empty"
+                      : activeView === "activity"
+                      ? "No activity yet"
                       : activeView === "starred"
                       ? "No starred files yet"
                       : activeView === "folders"
@@ -615,6 +700,8 @@ export default function DashboardPage() {
                   <p className="mt-1 text-sm text-zinc-400">
                     {activeView === "trash"
                       ? "Deleted files will appear here"
+                      : activeView === "activity"
+                      ? "Upload, rename, share, or delete a file to see updates here"
                       : activeView === "starred"
                       ? "Star a file to add it here"
                       : activeView === "folders"
@@ -636,6 +723,32 @@ export default function DashboardPage() {
                       : "Upload a file to get started"}
                   </p>
                 </div>
+              </div>
+            )}
+
+            {!isLoading && activeView === "activity" && (activityLogs ?? []).length > 0 && (
+              <div className="overflow-hidden rounded-2xl border border-zinc-200/80 bg-white shadow-sm shadow-zinc-200/40">
+                {(activityLogs ?? []).map((item) => (
+                  <div
+                    key={item._id}
+                    className="flex items-start gap-3 border-b border-zinc-100 px-5 py-4 last:border-b-0"
+                  >
+                    <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-zinc-100 text-zinc-600">
+                      <Activity className="h-4 w-4" />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm text-zinc-800">
+                        You {item.action}{" "}
+                        <span className="font-medium text-zinc-950">
+                          {item.fileName}
+                        </span>
+                      </p>
+                      <p className="mt-1 text-xs text-zinc-400">
+                        {new Date(item.createdAt).toLocaleString()}
+                      </p>
+                    </div>
+                  </div>
+                ))}
               </div>
             )}
 
@@ -664,6 +777,7 @@ export default function DashboardPage() {
                       isFavorite={folder.isFavorite ?? false}
                       isOpen={folderMenuId === folder._id}
                       isDeleting={deletingFolderId === folder._id}
+                      canManage={canManageFolder(folder)}
                       onToggle={() =>
                         setFolderMenuId((current) =>
                           current === folder._id ? null : folder._id
@@ -708,6 +822,7 @@ export default function DashboardPage() {
                       isFavorite={folder.isFavorite ?? false}
                       isOpen={folderMenuId === folder._id}
                       isDeleting={deletingFolderId === folder._id}
+                      canManage={canManageFolder(folder)}
                       onToggle={() =>
                         setFolderMenuId((current) =>
                           current === folder._id ? null : folder._id
@@ -764,7 +879,7 @@ export default function DashboardPage() {
                       </div>
                     </button>
 
-                    <div className="flex shrink-0 items-center gap-2">
+                    <div className="flex shrink-0 flex-wrap items-center gap-2">
                       {activeView !== "trash" ? (
                         <>
                           <Button
@@ -789,9 +904,24 @@ export default function DashboardPage() {
                             </a>
                           </Button>
                           <Button
+                            variant="outline"
+                            size="sm"
+                            className="h-8 rounded-lg px-3 text-xs"
+                            disabled={!file.url}
+                            onClick={() => {
+                              setSharingFile(file);
+                              setShareDuration("24");
+                              setShareUrl("");
+                            }}
+                          >
+                            <Link2 className="mr-1.5 h-3.5 w-3.5" />
+                            Share
+                          </Button>
+                          <Button
                             variant="ghost"
                             size="sm"
                             className="h-8 rounded-lg px-3 text-zinc-400 hover:bg-zinc-100 hover:text-zinc-700"
+                            disabled={!canManageFile(file)}
                             onClick={() => openRenameDialog(file)}
                           >
                             <Pencil className="h-3.5 w-3.5" />
@@ -800,6 +930,7 @@ export default function DashboardPage() {
                             variant="ghost"
                             size="sm"
                             className="h-8 rounded-lg px-3 text-zinc-400 hover:bg-red-50 hover:text-red-500"
+                            disabled={!canManageFile(file)}
                             onClick={async () => {
                               try {
                                 await deleteFile({ fileId: file._id });
@@ -818,6 +949,7 @@ export default function DashboardPage() {
                             variant="outline"
                             size="sm"
                             className="h-8 rounded-lg text-xs"
+                            disabled={!canManageFile(file)}
                             onClick={async () => {
                               try {
                                 await restoreFile({ fileId: file._id });
@@ -834,6 +966,7 @@ export default function DashboardPage() {
                             variant="ghost"
                             size="sm"
                             className="h-8 rounded-lg px-3 text-zinc-400 hover:bg-red-50 hover:text-red-500"
+                            disabled={!canManageFile(file)}
                             onClick={async () => {
                               try {
                                 await permanentlyDeleteFile({ fileId: file._id });
@@ -946,9 +1079,24 @@ export default function DashboardPage() {
                               </a>
                             </Button>
                             <Button
+                              variant="outline"
+                              size="sm"
+                              className="h-8 rounded-lg px-2.5 text-xs"
+                              disabled={!file.url}
+                              onClick={() => {
+                                setSharingFile(file);
+                                setShareDuration("24");
+                                setShareUrl("");
+                              }}
+                            >
+                              <Link2 className="mr-1 h-3.5 w-3.5" />
+                              Share
+                            </Button>
+                            <Button
                               variant="ghost"
                               size="sm"
                               className="h-7 rounded-lg px-2 text-zinc-400 hover:bg-zinc-100 hover:text-zinc-700"
+                              disabled={!canManageFile(file)}
                               onClick={() => openRenameDialog(file)}
                             >
                               <Pencil className="h-3.5 w-3.5" />
@@ -958,6 +1106,7 @@ export default function DashboardPage() {
                               variant="ghost"
                               size="sm"
                               className="h-7 rounded-lg px-2 text-zinc-400 hover:bg-red-50 hover:text-red-500"
+                              disabled={!canManageFile(file)}
                               onClick={async () => {
                                 try {
                                   await deleteFile({ fileId: file._id });
@@ -976,6 +1125,7 @@ export default function DashboardPage() {
                               variant="outline"
                               size="sm"
                               className="h-7 flex-1 rounded-lg px-2 text-xs"
+                              disabled={!canManageFile(file)}
                               onClick={async () => {
                                 try {
                                   await restoreFile({ fileId: file._id });
@@ -992,6 +1142,7 @@ export default function DashboardPage() {
                               variant="ghost"
                               size="sm"
                               className="h-7 rounded-lg px-2 text-zinc-400 hover:bg-red-50 hover:text-red-500"
+                              disabled={!canManageFile(file)}
                               onClick={async () => {
                                 try {
                                   await permanentlyDeleteFile({ fileId: file._id });
@@ -1174,6 +1325,76 @@ export default function DashboardPage() {
           </div>
         </div>
       )}
+
+      <Dialog
+        open={!!sharingFile}
+        onOpenChange={(isOpen) => {
+          if (!isOpen) {
+            setSharingFile(null);
+            setShareUrl("");
+            setShareDuration("24");
+          }
+        }}
+      >
+        <DialogContent className="gap-5 p-5 sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="text-xl">Share file</DialogTitle>
+            <DialogDescription>
+              Create an expiring link for {sharingFile ? `"${sharingFile.name}"` : "this file"}.
+            </DialogDescription>
+          </DialogHeader>
+          <form onSubmit={submitShareLink} className="space-y-5">
+            <div className="space-y-2">
+              <label htmlFor="share-duration" className="text-sm font-medium text-zinc-700">
+                Link expires after
+              </label>
+              <select
+                id="share-duration"
+                value={shareDuration}
+                onChange={(event) => setShareDuration(event.target.value)}
+                className="h-10 w-full rounded-xl border border-zinc-200 bg-white px-3 text-sm text-zinc-800 outline-none focus:border-zinc-400 focus:ring-2 focus:ring-zinc-100"
+              >
+                <option value="1">1 hour</option>
+                <option value="24">24 hours</option>
+                <option value="168">7 days</option>
+              </select>
+            </div>
+
+            {shareUrl && (
+              <div className="flex items-center gap-2 rounded-xl border border-zinc-200 bg-zinc-50 p-2">
+                <Input value={shareUrl} readOnly className="border-0 bg-transparent shadow-none" />
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="icon-sm"
+                  onClick={async () => {
+                    await navigator.clipboard?.writeText(shareUrl);
+                    toast.success("Link copied");
+                  }}
+                >
+                  <Copy className="h-4 w-4" />
+                </Button>
+              </div>
+            )}
+
+            <DialogFooter className="border-0 bg-transparent p-0">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => {
+                  setSharingFile(null);
+                  setShareUrl("");
+                }}
+              >
+                Close
+              </Button>
+              <Button type="submit" disabled={isCreatingShareLink}>
+                {isCreatingShareLink ? "Creating..." : "Create link"}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
 
       <Dialog
         open={!!renamingFile}
@@ -1360,6 +1581,7 @@ function FolderActionsMenu({
   isFavorite,
   isOpen,
   isDeleting,
+  canManage,
   onToggle,
   onRename,
   onToggleFavorite,
@@ -1368,6 +1590,7 @@ function FolderActionsMenu({
   isFavorite: boolean;
   isOpen: boolean;
   isDeleting: boolean;
+  canManage: boolean;
   onToggle: () => void;
   onRename: () => void;
   onToggleFavorite: () => void;
@@ -1395,9 +1618,11 @@ function FolderActionsMenu({
         <div className="absolute right-0 top-10 z-30 min-w-52 overflow-hidden rounded-xl border border-zinc-200 bg-white py-1 shadow-xl shadow-zinc-200/70">
           <button
             type="button"
-            className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-zinc-700 transition-colors hover:bg-zinc-50"
+            disabled={!canManage}
+            className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-zinc-700 transition-colors hover:bg-zinc-50 disabled:cursor-not-allowed disabled:text-zinc-300"
             onClick={(event) => {
               event.stopPropagation();
+              if (!canManage) return;
               onRename();
             }}
           >
@@ -1418,9 +1643,11 @@ function FolderActionsMenu({
           <div className="my-1 h-px bg-zinc-100" />
           <button
             type="button"
-            className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-red-600 transition-colors hover:bg-red-50"
+            disabled={!canManage}
+            className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-red-600 transition-colors hover:bg-red-50 disabled:cursor-not-allowed disabled:text-zinc-300 disabled:hover:bg-transparent"
             onClick={(event) => {
               event.stopPropagation();
+              if (!canManage) return;
               onDelete();
             }}
           >
@@ -1447,7 +1674,7 @@ function SidebarItem({
   return (
     <button
       onClick={onClick}
-      className={`flex w-full items-center gap-2.5 rounded-lg px-3 py-2.5 text-left text-sm transition-colors ${
+      className={`flex w-auto shrink-0 items-center gap-2.5 rounded-lg px-3 py-2.5 text-left text-sm transition-colors lg:w-full ${
         active
           ? "bg-zinc-900 font-medium text-white"
           : "text-zinc-600 hover:bg-zinc-50 hover:text-zinc-900"

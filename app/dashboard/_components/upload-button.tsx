@@ -34,11 +34,18 @@ const formSchema = z.object({
   folderId: z.string(),
 });
 
+const MAX_UPLOAD_SIZE = 50 * 1024 * 1024;
+
 type FileType = "image" | "pdf" | "document" | "spreadsheet" | "audio" | "video";
 type FolderOption = {
   _id: Id<"folders">;
   name: string;
 };
+
+function formatFileSize(size: number) {
+  if (size < 1024 * 1024) return `${Math.max(1, Math.round(size / 1024))} KB`;
+  return `${(size / (1024 * 1024)).toFixed(1)} MB`;
+}
 
 function getFileType(file: File): FileType {
   const extension = file.name.split(".").pop()?.toLowerCase();
@@ -76,6 +83,11 @@ export function UploadButton({ folders = [] }: { folders?: FolderOption[] }) {
   const selectedFile = form.watch("file");
 
   function setSelectedFile(file: File) {
+    if (file.size > MAX_UPLOAD_SIZE) {
+      toast.error(`Files over ${formatFileSize(MAX_UPLOAD_SIZE)} need chunked upload support first.`);
+      return;
+    }
+
     form.setValue("file", file, {
       shouldDirty: true,
       shouldTouch: true,
@@ -273,8 +285,8 @@ export function UploadButton({ folders = [] }: { folders?: FolderOption[] }) {
                     </span>
                     <span className="mt-1 text-xs text-zinc-500">
                       {selectedFile
-                        ? "Click to choose a different file"
-                        : "or click to browse files, media, and documents"}
+                        ? `${formatFileSize(selectedFile.size)} selected`
+                        : `or click to browse files up to ${formatFileSize(MAX_UPLOAD_SIZE)}`}
                     </span>
                   </button>
                   <FormMessage />
