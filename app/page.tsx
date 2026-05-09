@@ -1,8 +1,8 @@
 "use client";
 
-import { SignInButton, SignUpButton, useAuth } from "@clerk/nextjs";
+import { SignUpButton, useAuth } from "@clerk/nextjs";
 import { Button } from "@/components/ui/button";
-import { CheckCircle2, Files, FolderOpen, Link2, ShieldCheck } from "lucide-react";
+import { CheckCircle2, Files, FolderOpen, Link2 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useEffect } from "react";
 import type { ReactNode } from "react";
@@ -29,40 +29,29 @@ export default function HomePage() {
     <main className="min-h-[calc(100vh-64px)] bg-[#f6f7f9] px-4 py-10 dark:bg-zinc-950 sm:px-6 lg:px-8">
       <section className="mx-auto grid min-h-[calc(100vh-144px)] w-full max-w-6xl items-center gap-10 lg:grid-cols-[minmax(0,0.95fr)_minmax(420px,1fr)]">
         <div className="max-w-xl">
-          <div className="inline-flex items-center gap-2 rounded-full border border-zinc-200 bg-white px-3 py-1 text-xs font-medium text-zinc-600 shadow-sm dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-300">
-            <ShieldCheck className="h-3.5 w-3.5" />
-            Team file storage, kept simple
-          </div>
-
-          <h1 className="mt-5 text-4xl font-semibold tracking-tight text-zinc-950 dark:text-zinc-50 sm:text-5xl">
-            Store, preview, and share your project files in one clean workspace.
+          <h1 className="text-4xl font-semibold tracking-tight text-zinc-950 dark:text-zinc-50 sm:text-5xl">
+            NexDrive for project files.
           </h1>
 
-          <p className="mt-4 max-w-lg text-base leading-7 text-zinc-600 dark:text-zinc-400">
-            NexDrive gives your team a focused place for uploads, folders,
-            previews, shared links, activity, and storage tracking without extra
-            noise.
+          <p className="mt-4 max-w-md text-base leading-7 text-zinc-600 dark:text-zinc-400">
+            Upload files, keep folders tidy, and send share links when someone
+            needs access.
           </p>
 
           <div className="mt-7 flex flex-col gap-3 sm:flex-row">
             <SignUpButton mode="modal" forceRedirectUrl="/dashboard">
               <Button size="lg" className="h-11 rounded-xl px-5">
-                Create account
+                Get started
               </Button>
             </SignUpButton>
-            <SignInButton mode="modal" forceRedirectUrl="/dashboard">
-              <Button variant="outline" size="lg" className="h-11 rounded-xl px-5">
-                Sign in
-              </Button>
-            </SignInButton>
           </div>
 
           <div className="mt-8 grid gap-3 text-sm text-zinc-600 dark:text-zinc-400 sm:grid-cols-2">
             {[
-              "PDF and image previews",
-              "Share links with expiry",
-              "Recent activity tracking",
-              "Light and dark mode",
+              "Preview PDFs and images",
+              "Expiring share links",
+              "Recent activity",
+              "Storage usage",
             ].map((item) => (
               <div key={item} className="flex items-center gap-2">
                 <CheckCircle2 className="h-4 w-4 text-zinc-900 dark:text-zinc-100" />
@@ -115,10 +104,10 @@ export default function HomePage() {
             <div className="mt-4 rounded-xl border border-zinc-200 bg-white p-3 dark:border-zinc-800 dark:bg-zinc-900">
               <div className="flex items-center justify-between text-xs text-zinc-500">
                 <span>Storage</span>
-                <span>142 MB of 500 MB</span>
+                <span>142 MB of 1 GB</span>
               </div>
               <div className="mt-2 h-2 overflow-hidden rounded-full bg-zinc-100 dark:bg-zinc-800">
-                <div className="h-full w-[28%] rounded-full bg-zinc-900 dark:bg-zinc-100" />
+                <div className="h-full w-[14%] rounded-full bg-zinc-900 dark:bg-zinc-100" />
               </div>
             </div>
           </div>

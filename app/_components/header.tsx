@@ -9,7 +9,7 @@ import {
   useOrganizationList,
   useUser,
 } from "@clerk/nextjs";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useTheme } from "./theme-provider";
 import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
@@ -27,6 +27,8 @@ import {
 
 export function Header() {
   const { isSignedIn } = useAuth();
+  const pathname = usePathname();
+  const showHeaderSignIn = pathname !== "/";
 
   return (
     <header className="relative z-50 border-b border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-950">
@@ -39,11 +41,11 @@ export function Header() {
           <ThemeToggle />
           {isSignedIn ? (
             <AccountMenu />
-          ) : (
+          ) : showHeaderSignIn ? (
             <SignInButton mode="modal" forceRedirectUrl="/dashboard">
               <Button>Sign in</Button>
             </SignInButton>
-          )}
+          ) : null}
         </div>
       </div>
     </header>

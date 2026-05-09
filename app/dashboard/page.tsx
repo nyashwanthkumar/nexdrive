@@ -135,6 +135,7 @@ export default function DashboardPage() {
   const [isCreatingShareLink, setIsCreatingShareLink] = useState(false);
   const [isMobileNavOpen, setIsMobileNavOpen] = useState(false);
   const [selectedFileIds, setSelectedFileIds] = useState<Id<"files">[]>([]);
+  const [selectedFolderIds, setSelectedFolderIds] = useState<Id<"folders">[]>([]);
   const [isBulkWorking, setIsBulkWorking] = useState(false);
   const [isSharesDialogOpen, setIsSharesDialogOpen] = useState(false);
 
@@ -238,14 +239,6 @@ export default function DashboardPage() {
 
   const workspaceTitle = organization ? organization.name : "Personal";
 
-  if (!isLoaded || !isSignedIn) {
-    return (
-      <div className="flex h-64 items-center justify-center">
-        <Loader2 className="h-5 w-5 animate-spin text-zinc-400" />
-      </div>
-    );
-  }
-
   function FileTypeIcon({ type }: { type: string }) {
     if (type === "image") return <ImageIcon className="h-7 w-7 text-sky-500" />;
     if (type === "pdf") return <FileText className="h-7 w-7 text-red-500" />;
@@ -272,39 +265,64 @@ export default function DashboardPage() {
     activity: { label: "Recent activity", description: "Latest file changes in this workspace" },
   }[activeView];
 
-  const visibleFolders =
-    activeView === "folders" && !currentFolderId
-      ? [...(folders ?? [])]
+  const visibleFolders = useMemo(() => {
+    if (activeView === "folders" && !currentFolderId) {
+      return [...(folders ?? [])]
           .filter(
             (folder) =>
               !(folder.shouldDelete ?? false) &&
               folder.name.toLowerCase().includes(search.toLowerCase())
           )
-          .sort((a, b) => a.name.localeCompare(b.name))
-      : activeView === "starred"
-      ? [...(folders ?? [])]
+          .sort((a, b) => a.name.localeCompare(b.name));
+    }
+
+    if (activeView === "starred") {
+      return [...(folders ?? [])]
           .filter(
             (folder) =>
               !(folder.shouldDelete ?? false) &&
               (folder.isFavorite ?? false) &&
               folder.name.toLowerCase().includes(search.toLowerCase())
           )
-          .sort((a, b) => a.name.localeCompare(b.name))
-      : activeView === "trash"
-      ? [...(folders ?? [])]
+          .sort((a, b) => a.name.localeCompare(b.name));
+    }
+
+    if (activeView === "trash") {
+      return [...(folders ?? [])]
           .filter(
             (folder) =>
               (folder.shouldDelete ?? false) &&
               folder.name.toLowerCase().includes(search.toLowerCase())
           )
-          .sort((a, b) => (b.deletedAt ?? 0) - (a.deletedAt ?? 0))
-      : [];
+          .sort((a, b) => (b.deletedAt ?? 0) - (a.deletedAt ?? 0));
+    }
+
+    return [];
+  }, [activeView, currentFolderId, folders, search]);
+
+  useEffect(() => {
+    setSelectedFolderIds((current) =>
+      current.filter((folderId) => visibleFolders.some((folder) => folder._id === folderId))
+    );
+  }, [visibleFolders]);
+
+  if (!isLoaded || !isSignedIn) {
+    return (
+      <div className="flex h-64 items-center justify-center">
+        <Loader2 className="h-5 w-5 animate-spin text-zinc-400" />
+      </div>
+    );
+  }
 
   const selectedFiles = displayedFiles.filter((file) => selectedFileIds.includes(file._id));
+  const selectedFolders = visibleFolders.filter((folder) => selectedFolderIds.includes(folder._id));
   const activeShares = (shareLinks ?? []).filter((share) => !share.isExpired && !share.isRevoked);
   const storageTotal = storageStats?.totalSize ?? 0;
-  const storageLimit = 500 * 1024 * 1024;
+  const storageLimit = 1024 * 1024 * 1024;
   const storagePercent = Math.min(100, Math.round((storageTotal / storageLimit) * 100));
+  const selectableFiles = displayedFiles.filter((file) => activeView === "trash" || canManageFile(file));
+  const selectableFolders = visibleFolders.filter((folder) => activeView === "trash" || canManageFolder(folder));
+  const selectedItemCount = selectedFiles.length + selectedFolders.length;
 
   function formatBytes(size: number) {
     if (!size) return "0 MB";
@@ -321,16 +339,37 @@ export default function DashboardPage() {
     );
   }
 
-  function toggleSelectAllVisible() {
-    const manageableIds = displayedFiles
-      .filter((file) => activeView === "trash" || canManageFile(file))
-      .map((file) => file._id);
-
-    setSelectedFileIds((current) =>
-      manageableIds.length > 0 && manageableIds.every((id) => current.includes(id))
-        ? current.filter((id) => !manageableIds.includes(id))
-        : Array.from(new Set([...current, ...manageableIds]))
+  function toggleSelectedFolder(folderId: Id<"folders">) {
+    setSelectedFolderIds((current) =>
+      current.includes(folderId)
+        ? current.filter((id) => id !== folderId)
+        : [...current, folderId]
     );
+  }
+
+  function toggleSelectAllVisible() {
+    const manageableFileIds = selectableFiles.map((file) => file._id);
+    const manageableFolderIds = selectableFolders.map((folder) => folder._id);
+    const allFilesSelected =
+      manageableFileIds.length === 0 ||
+      manageableFileIds.every((id) => selectedFileIds.includes(id));
+    const allFoldersSelected =
+      manageableFolderIds.length === 0 ||
+      manageableFolderIds.every((id) => selectedFolderIds.includes(id));
+
+    if (manageableFileIds.length + manageableFolderIds.length > 0 && allFilesSelected && allFoldersSelected) {
+      setSelectedFileIds((current) => current.filter((id) => !manageableFileIds.includes(id)));
+      setSelectedFolderIds((current) => current.filter((id) => !manageableFolderIds.includes(id)));
+      return;
+    }
+
+    setSelectedFileIds((current) => Array.from(new Set([...current, ...manageableFileIds])));
+    setSelectedFolderIds((current) => Array.from(new Set([...current, ...manageableFolderIds])));
+  }
+
+  function clearSelection() {
+    setSelectedFileIds([]);
+    setSelectedFolderIds([]);
   }
 
   function openRenameDialog(file: FileItem) {
@@ -503,10 +542,19 @@ export default function DashboardPage() {
   }
 
   async function bulkDeleteSelected() {
-    if (selectedFiles.length === 0) return;
+    if (selectedFiles.length === 0 && selectedFolders.length === 0) return;
 
     try {
       setIsBulkWorking(true);
+
+      for (const folder of selectedFolders) {
+        if (!canManageFolder(folder)) continue;
+        if (activeView === "trash") {
+          await permanentlyDeleteFolder({ folderId: folder._id });
+        } else {
+          await deleteFolder({ folderId: folder._id });
+        }
+      }
 
       for (const file of selectedFiles) {
         if (!canManageFile(file)) continue;
@@ -517,8 +565,8 @@ export default function DashboardPage() {
         }
       }
 
-      toast.success(activeView === "trash" ? "Selected files deleted" : "Selected files moved to trash");
-      setSelectedFileIds([]);
+      toast.success(activeView === "trash" ? "Selected items deleted" : "Selected items moved to trash");
+      clearSelection();
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Bulk action failed");
     } finally {
@@ -527,10 +575,16 @@ export default function DashboardPage() {
   }
 
   async function bulkRestoreSelected() {
-    if (selectedFiles.length === 0) return;
+    if (selectedFiles.length === 0 && selectedFolders.length === 0) return;
 
     try {
       setIsBulkWorking(true);
+
+      for (const folder of selectedFolders) {
+        if (canManageFolder(folder)) {
+          await restoreFolder({ folderId: folder._id });
+        }
+      }
 
       for (const file of selectedFiles) {
         if (canManageFile(file)) {
@@ -538,10 +592,10 @@ export default function DashboardPage() {
         }
       }
 
-      toast.success("Selected files restored");
-      setSelectedFileIds([]);
+      toast.success("Selected items restored");
+      clearSelection();
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Failed to restore selected files");
+      toast.error(error instanceof Error ? error.message : "Failed to restore selected items");
     } finally {
       setIsBulkWorking(false);
     }
@@ -790,17 +844,6 @@ export default function DashboardPage() {
                 <p className="mt-0.5 text-xs text-zinc-500 dark:text-zinc-400">{viewMeta.description}</p>
               </div>
               <div className="flex flex-wrap items-center justify-end gap-2 rounded-2xl border border-zinc-200/80 bg-white/85 p-1.5 shadow-sm shadow-zinc-200/50 backdrop-blur dark:border-zinc-800 dark:bg-zinc-900/85 dark:shadow-none">
-                {activeView === "folders" && !currentFolderId && (
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="h-9 rounded-xl border-transparent bg-transparent px-3 shadow-none hover:bg-zinc-100 dark:hover:bg-zinc-800"
-                    onClick={() => setIsFolderDialogOpen(true)}
-                  >
-                    <Plus className="mr-1.5 h-3.5 w-3.5" />
-                    Folder
-                  </Button>
-                )}
                 {!isLoading && displayedFiles.length + visibleFolders.length > 0 && (
                   <span className="hidden rounded-lg bg-zinc-100 px-2.5 py-2 text-xs font-medium text-zinc-500 dark:bg-zinc-800 dark:text-zinc-400 sm:inline-flex">
                     {displayedFiles.length + visibleFolders.length}{" "}
@@ -821,7 +864,7 @@ export default function DashboardPage() {
                     </span>
                   )}
                 </Button>
-                {displayedFiles.length > 0 && (
+                {selectableFiles.length + selectableFolders.length > 0 && (
                   <Button
                     variant="outline"
                     size="sm"
@@ -890,13 +933,34 @@ export default function DashboardPage() {
               </div>
             </div>
 
-            {selectedFileIds.length > 0 && (
+            {activeView === "folders" && !currentFolderId && (
+              <div className="flex flex-col gap-3 rounded-2xl border border-zinc-200/80 bg-white px-4 py-4 shadow-sm shadow-zinc-200/40 dark:border-zinc-800 dark:bg-zinc-900 dark:shadow-none sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <h2 className="text-sm font-semibold text-zinc-900 dark:text-zinc-50">
+                    Folders
+                  </h2>
+                  <p className="mt-1 text-xs text-zinc-500 dark:text-zinc-400">
+                    Keep related uploads together. Folders moved to trash can be restored later.
+                  </p>
+                </div>
+                <Button
+                  size="sm"
+                  className="h-9 rounded-xl"
+                  onClick={() => setIsFolderDialogOpen(true)}
+                >
+                  <Plus className="mr-1.5 h-3.5 w-3.5" />
+                  Create folder
+                </Button>
+              </div>
+            )}
+
+            {selectedItemCount > 0 && (
               <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-zinc-200/80 bg-white px-4 py-3 shadow-sm shadow-zinc-200/40 dark:border-zinc-800 dark:bg-zinc-900 dark:shadow-none">
                 <span className="text-sm font-medium text-zinc-800 dark:text-zinc-100">
-                  {selectedFileIds.length} selected
+                  {selectedItemCount} selected
                 </span>
                 <div className="flex flex-wrap gap-2">
-                  <Button variant="outline" size="sm" onClick={() => setSelectedFileIds([])}>
+                  <Button variant="outline" size="sm" onClick={clearSelection}>
                     Clear
                   </Button>
                   {activeView === "trash" ? (
@@ -1048,6 +1112,22 @@ export default function DashboardPage() {
                   >
                     <button
                       type="button"
+                      aria-label={selectedFolderIds.includes(folder._id) ? "Unselect folder" : "Select folder"}
+                      disabled={!canManageFolder(folder)}
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        toggleSelectedFolder(folder._id);
+                      }}
+                      className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border transition disabled:cursor-not-allowed disabled:opacity-40 ${
+                        selectedFolderIds.includes(folder._id)
+                          ? "border-zinc-900 bg-zinc-900 text-white dark:border-zinc-100 dark:bg-zinc-100 dark:text-zinc-950"
+                          : "border-zinc-200 bg-white text-zinc-400 hover:border-zinc-300 dark:border-zinc-700 dark:bg-zinc-900"
+                      }`}
+                    >
+                      {selectedFolderIds.includes(folder._id) && <Check className="h-4 w-4" />}
+                    </button>
+                    <button
+                      type="button"
                       onClick={() => {
                         if (activeView !== "trash") setCurrentFolderId(folder._id);
                       }}
@@ -1117,6 +1197,22 @@ export default function DashboardPage() {
                     key={folder._id}
                     className="flex h-20 items-center gap-3 rounded-2xl border border-zinc-200/80 bg-white px-4 shadow-sm shadow-zinc-200/40 transition-colors hover:bg-zinc-50/70"
                   >
+                    <button
+                      type="button"
+                      aria-label={selectedFolderIds.includes(folder._id) ? "Unselect folder" : "Select folder"}
+                      disabled={!canManageFolder(folder)}
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        toggleSelectedFolder(folder._id);
+                      }}
+                      className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border transition disabled:cursor-not-allowed disabled:opacity-40 ${
+                        selectedFolderIds.includes(folder._id)
+                          ? "border-zinc-900 bg-zinc-900 text-white dark:border-zinc-100 dark:bg-zinc-100 dark:text-zinc-950"
+                          : "border-zinc-200 bg-white text-zinc-400 hover:border-zinc-300 dark:border-zinc-700 dark:bg-zinc-900"
+                      }`}
+                    >
+                      {selectedFolderIds.includes(folder._id) && <Check className="h-4 w-4" />}
+                    </button>
                     <button
                       type="button"
                       onClick={() => {
@@ -1189,47 +1285,49 @@ export default function DashboardPage() {
                     key={file._id}
                     className="flex flex-col gap-3 border-b border-zinc-100 px-5 py-3.5 transition-colors last:border-b-0 hover:bg-zinc-50/70 dark:border-zinc-800 dark:hover:bg-zinc-800/70 sm:flex-row sm:items-center sm:justify-between"
                   >
-                    <button
-                      type="button"
-                      aria-label={selectedFileIds.includes(file._id) ? "Unselect file" : "Select file"}
-                      disabled={!canManageFile(file)}
-                      onClick={() => toggleSelectedFile(file._id)}
-                      className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border transition disabled:cursor-not-allowed disabled:opacity-40 ${
-                        selectedFileIds.includes(file._id)
-                          ? "border-zinc-900 bg-zinc-900 text-white dark:border-zinc-100 dark:bg-zinc-100 dark:text-zinc-950"
-                          : "border-zinc-200 bg-white text-zinc-400 hover:border-zinc-300 dark:border-zinc-700 dark:bg-zinc-900"
-                      }`}
-                    >
-                      {selectedFileIds.includes(file._id) && <Check className="h-4 w-4" />}
-                    </button>
-                    <button
-                      type="button"
-                      disabled={!file.url}
-                      onClick={() => file.url && setPreviewFile(file)}
-                      className="flex min-w-0 items-center gap-3 text-left disabled:cursor-default"
-                    >
-                      <div className="flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-zinc-100 bg-zinc-50 dark:border-zinc-800 dark:bg-zinc-800">
-                        {file.type === "image" && file.url ? (
-                          <Image
-                            src={file.url}
-                            alt={file.name}
-                            width={44}
-                            height={44}
-                            className="h-full w-full object-cover"
-                          />
-                        ) : (
-                          <FileTypeIcon type={file.type} />
-                        )}
-                      </div>
-                      <div className="min-w-0">
-                        <p className="truncate text-[15px] font-semibold text-zinc-900 dark:text-zinc-50">
-                          {file.name}
-                        </p>
-                        <span className="text-[10px] font-medium uppercase tracking-wide text-zinc-400">
-                          {file.type}
-                        </span>
-                      </div>
-                    </button>
+                    <div className="flex min-w-0 flex-1 items-center gap-3">
+                      <button
+                        type="button"
+                        aria-label={selectedFileIds.includes(file._id) ? "Unselect file" : "Select file"}
+                        disabled={!canManageFile(file)}
+                        onClick={() => toggleSelectedFile(file._id)}
+                        className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border transition disabled:cursor-not-allowed disabled:opacity-40 ${
+                          selectedFileIds.includes(file._id)
+                            ? "border-zinc-900 bg-zinc-900 text-white dark:border-zinc-100 dark:bg-zinc-100 dark:text-zinc-950"
+                            : "border-zinc-200 bg-white text-zinc-400 hover:border-zinc-300 dark:border-zinc-700 dark:bg-zinc-900"
+                        }`}
+                      >
+                        {selectedFileIds.includes(file._id) && <Check className="h-4 w-4" />}
+                      </button>
+                      <button
+                        type="button"
+                        disabled={!file.url}
+                        onClick={() => file.url && setPreviewFile(file)}
+                        className="flex min-w-0 items-center gap-3 text-left disabled:cursor-default"
+                      >
+                        <div className="flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-zinc-100 bg-zinc-50 dark:border-zinc-800 dark:bg-zinc-800">
+                          {file.type === "image" && file.url ? (
+                            <Image
+                              src={file.url}
+                              alt={file.name}
+                              width={44}
+                              height={44}
+                              className="h-full w-full object-cover"
+                            />
+                          ) : (
+                            <FileTypeIcon type={file.type} />
+                          )}
+                        </div>
+                        <div className="min-w-0">
+                          <p className="truncate text-[15px] font-semibold text-zinc-900 dark:text-zinc-50">
+                            {file.name}
+                          </p>
+                          <span className="text-[10px] font-medium uppercase tracking-wide text-zinc-400">
+                            {file.type}
+                          </span>
+                        </div>
+                      </button>
+                    </div>
 
                     <div className="flex shrink-0 flex-wrap items-center gap-2">
                       {activeView !== "trash" ? (
