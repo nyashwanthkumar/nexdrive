@@ -37,12 +37,14 @@ import {
   Loader2,
   Menu,
   MoreVertical,
+  Moon,
   Music,
   Pencil,
   Plus,
   RotateCcw,
   Search,
   Star,
+  Sun,
   Trash2,
   User,
   Video,
@@ -50,6 +52,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { useRouter } from "next/navigation";
+import { useTheme } from "next-themes";
 import { useEffect, useMemo, useState } from "react";
 
 type ViewType =
@@ -81,6 +84,7 @@ type FileItem = {
 export default function DashboardPage() {
   const { isSignedIn, isLoaded } = useAuth();
   const router = useRouter();
+  const { resolvedTheme, setTheme } = useTheme();
   const { organization } = useOrganization();
   const { user } = useUser();
 
@@ -406,6 +410,7 @@ export default function DashboardPage() {
   }
 
   const isWorkspaceAdmin = userRole === "org:admin" || userRole === "admin";
+  const isDarkTheme = resolvedTheme === "dark";
 
   function canManageFile(file: FileItem) {
     if (!user?.id) return false;
@@ -445,6 +450,22 @@ export default function DashboardPage() {
                 isMobileNavOpen ? "grid gap-1" : "hidden"
               } lg:space-y-0.5`}
             >
+              <button
+                type="button"
+                className="mb-1 flex w-full items-center justify-between rounded-lg border border-zinc-200 bg-zinc-50 px-3 py-2.5 text-sm font-medium text-zinc-700 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-200 lg:hidden"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  setTheme(isDarkTheme ? "light" : "dark");
+                }}
+              >
+                <span className="flex items-center gap-2.5">
+                  {isDarkTheme ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+                  {isDarkTheme ? "Light mode" : "Dark mode"}
+                </span>
+                <span className="text-xs text-zinc-400">
+                  {isDarkTheme ? "On" : "Off"}
+                </span>
+              </button>
               <SidebarItem
                 active={activeView === "recent"}
                 icon={<Clock className="h-4 w-4" />}
