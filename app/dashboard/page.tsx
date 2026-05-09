@@ -421,18 +421,18 @@ export default function DashboardPage() {
 
   return (
     <>
-      <main className="min-h-[calc(100vh-64px)] bg-[#f6f7f9]">
+      <main className="min-h-[calc(100vh-64px)] bg-[#f6f7f9] dark:bg-zinc-950">
         <div className="grid min-h-[calc(100vh-64px)] grid-cols-1 lg:grid-cols-[220px_minmax(0,1fr)]">
 
             {/* Sidebar */}
-          <aside className="relative flex flex-col gap-3 border-b border-zinc-200/80 bg-white px-3 py-3 lg:border-b-0 lg:border-r lg:py-5">
+          <aside className="relative flex flex-col gap-3 border-b border-zinc-200/80 bg-white px-3 py-3 dark:border-zinc-800 dark:bg-zinc-950 lg:border-b-0 lg:border-r lg:py-5">
             <div className="flex items-center gap-2 px-1 lg:mb-2">
               <button
                 type="button"
                 aria-label="Open sections"
                 aria-expanded={isMobileNavOpen}
                 onClick={() => setIsMobileNavOpen((open) => !open)}
-                className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl border border-zinc-200 bg-white text-zinc-700 shadow-sm shadow-zinc-200/60 transition hover:bg-zinc-50 lg:hidden"
+                className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl border border-zinc-200 bg-white text-zinc-700 shadow-sm shadow-zinc-200/60 transition hover:bg-zinc-50 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-200 dark:shadow-none dark:hover:bg-zinc-800 lg:hidden"
               >
                 {isMobileNavOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
               </button>
@@ -441,7 +441,7 @@ export default function DashboardPage() {
 
             <nav
               onClick={() => setIsMobileNavOpen(false)}
-              className={`absolute left-3 right-3 top-[72px] z-30 rounded-2xl border border-zinc-200 bg-white p-2 shadow-xl shadow-zinc-200/70 lg:static lg:block lg:rounded-none lg:border-0 lg:bg-transparent lg:p-0 lg:shadow-none ${
+              className={`absolute left-3 right-3 top-[72px] z-30 rounded-2xl border border-zinc-200 bg-white p-2 shadow-xl shadow-zinc-200/70 dark:border-zinc-800 dark:bg-zinc-950 dark:shadow-black/20 lg:static lg:block lg:rounded-none lg:border-0 lg:bg-transparent lg:p-0 lg:shadow-none ${
                 isMobileNavOpen ? "grid gap-1" : "hidden"
               } lg:space-y-0.5`}
             >
@@ -539,18 +539,18 @@ export default function DashboardPage() {
             </nav>
 
             <div className="mt-auto hidden border-t border-zinc-100 pt-4 lg:block">
-              <p className="mb-2 px-3 text-[10px] font-semibold uppercase tracking-widest text-zinc-400">
+              <p className="mb-2 px-3 text-[10px] font-semibold uppercase tracking-widest text-zinc-400 dark:text-zinc-500">
                 Workspace
               </p>
-              <div className="flex items-center gap-2.5 rounded-xl border border-zinc-100 bg-zinc-50/80 px-3 py-2">
-                <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border border-zinc-200 bg-white">
+              <div className="flex items-center gap-2.5 rounded-xl border border-zinc-100 bg-zinc-50/80 px-3 py-2 dark:border-zinc-800 dark:bg-zinc-900">
+                <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border border-zinc-200 bg-white dark:border-zinc-700 dark:bg-zinc-950">
                   {organization ? (
                     <Building2 className="h-3.5 w-3.5 text-zinc-500" />
                   ) : (
                     <User className="h-3.5 w-3.5 text-zinc-500" />
                   )}
                 </div>
-                <span className="truncate text-sm font-medium text-zinc-700">
+                <span className="truncate text-sm font-medium text-zinc-700 dark:text-zinc-200">
                   {workspaceTitle}
                 </span>
               </div>
@@ -561,21 +561,21 @@ export default function DashboardPage() {
           <section className="flex flex-col gap-4 px-4 py-4 sm:gap-5 sm:px-6 sm:py-6">
 
             {/* Search */}
-            <div className="flex items-center gap-3 rounded-2xl border border-zinc-200/80 bg-white px-4 py-2.5 shadow-sm shadow-zinc-200/40">
+            <div className="flex items-center gap-3 rounded-2xl border border-zinc-200/80 bg-white px-4 py-2.5 shadow-sm shadow-zinc-200/40 dark:border-zinc-800 dark:bg-zinc-900 dark:shadow-none">
               <Search className="h-4 w-4 shrink-0 text-zinc-400" />
               <Input
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 placeholder="Search files..."
-                className="border-0 bg-transparent p-0 text-sm shadow-none focus-visible:ring-0"
+                className="border-0 bg-transparent p-0 text-sm shadow-none focus-visible:ring-0 dark:text-zinc-100 dark:placeholder:text-zinc-500"
               />
             </div>
 
             {/* Header */}
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
-                <h1 className="text-xl font-semibold tracking-tight text-zinc-950">{viewMeta.label}</h1>
-                <p className="mt-0.5 text-xs text-zinc-500">{viewMeta.description}</p>
+                <h1 className="text-xl font-semibold tracking-tight text-zinc-950 dark:text-zinc-50">{viewMeta.label}</h1>
+                <p className="mt-0.5 text-xs text-zinc-500 dark:text-zinc-400">{viewMeta.description}</p>
               </div>
               <div className="flex flex-wrap items-center gap-3">
                 {activeView === "folders" && !currentFolderId && (
@@ -595,7 +595,7 @@ export default function DashboardPage() {
                     {displayedFiles.length + visibleFolders.length === 1 ? "item" : "items"}
                   </span>
                 )}
-                <div className="flex h-9 items-center gap-2 rounded-full border border-zinc-300 bg-white px-3 text-sm shadow-sm">
+                <div className="flex h-9 items-center gap-2 rounded-full border border-zinc-300 bg-white px-3 text-sm shadow-sm dark:border-zinc-700 dark:bg-zinc-900 dark:shadow-none">
                   {sortMode === "nameAsc" ? (
                     <ArrowDownAZ className="h-4 w-4 text-zinc-500" />
                   ) : sortMode === "nameDesc" ? (
@@ -607,7 +607,7 @@ export default function DashboardPage() {
                     aria-label="Sort files"
                     value={sortMode}
                     onChange={(event) => setSortMode(event.target.value as SortMode)}
-                    className="h-full cursor-pointer bg-transparent text-xs font-medium text-zinc-700 outline-none"
+                    className="h-full cursor-pointer bg-transparent text-xs font-medium text-zinc-700 outline-none dark:text-zinc-200"
                   >
                     <option value="newest">Newest first</option>
                     <option value="oldest">Oldest first</option>
@@ -615,7 +615,7 @@ export default function DashboardPage() {
                     <option value="nameDesc">Name Z-A</option>
                   </select>
                 </div>
-                <div className="flex h-9 overflow-hidden rounded-full border border-zinc-300 bg-white p-0.5 shadow-sm">
+                <div className="flex h-9 overflow-hidden rounded-full border border-zinc-300 bg-white p-0.5 shadow-sm dark:border-zinc-700 dark:bg-zinc-900 dark:shadow-none">
                   <button
                     type="button"
                     aria-label="List view"
@@ -743,23 +743,23 @@ export default function DashboardPage() {
             )}
 
             {!isLoading && activeView === "activity" && (activityLogs ?? []).length > 0 && (
-              <div className="overflow-hidden rounded-2xl border border-zinc-200/80 bg-white shadow-sm shadow-zinc-200/40">
+              <div className="overflow-hidden rounded-2xl border border-zinc-200/80 bg-white shadow-sm shadow-zinc-200/40 dark:border-zinc-800 dark:bg-zinc-900 dark:shadow-none">
                 {(activityLogs ?? []).map((item) => (
                   <div
                     key={item._id}
                     className="flex items-start gap-3 border-b border-zinc-100 px-5 py-4 last:border-b-0"
                   >
-                    <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-zinc-100 text-zinc-600">
+                    <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-zinc-100 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300">
                       <Activity className="h-4 w-4" />
                     </div>
                     <div className="min-w-0 flex-1">
-                      <p className="text-sm text-zinc-800">
+                      <p className="text-sm text-zinc-800 dark:text-zinc-200">
                         You {item.action}{" "}
-                        <span className="font-medium text-zinc-950">
+                        <span className="font-medium text-zinc-950 dark:text-zinc-50">
                           {item.fileName}
                         </span>
                       </p>
-                      <p className="mt-1 text-xs text-zinc-400">
+                      <p className="mt-1 text-xs text-zinc-400 dark:text-zinc-500">
                         {new Date(item.createdAt).toLocaleString()}
                       </p>
                     </div>
@@ -773,18 +773,18 @@ export default function DashboardPage() {
                 {visibleFolders.map((folder) => (
                   <div
                     key={folder._id}
-                    className="group flex h-20 items-center gap-3 rounded-2xl border border-zinc-200/80 bg-white px-4 text-left shadow-sm shadow-zinc-200/40 transition-all duration-150 hover:-translate-y-0.5 hover:border-zinc-300 hover:shadow-md"
+                    className="group flex h-20 items-center gap-3 rounded-2xl border border-zinc-200/80 bg-white px-4 text-left shadow-sm shadow-zinc-200/40 transition-all duration-150 hover:-translate-y-0.5 hover:border-zinc-300 hover:shadow-md dark:border-zinc-800 dark:bg-zinc-900 dark:shadow-none dark:hover:border-zinc-700"
                   >
                     <button
                       type="button"
                       onClick={() => setCurrentFolderId(folder._id)}
                       className="flex min-w-0 flex-1 items-center gap-3 text-left"
                     >
-                      <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-zinc-50 text-zinc-700">
+                      <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-zinc-50 text-zinc-700 dark:bg-zinc-800 dark:text-zinc-200">
                         <FolderOpen className="h-5 w-5" />
                       </span>
                       <span className="min-w-0 flex-1">
-                        <span className="block truncate text-sm font-semibold text-zinc-900">
+                        <span className="block truncate text-sm font-semibold text-zinc-900 dark:text-zinc-50">
                           {folder.name}
                         </span>
                       </span>
@@ -860,11 +860,11 @@ export default function DashboardPage() {
 
             {/* File list */}
             {!isLoading && displayedFiles.length > 0 && displayMode === "list" && (
-              <div className="overflow-hidden rounded-2xl border border-zinc-200/80 bg-white shadow-sm shadow-zinc-200/40">
+              <div className="overflow-hidden rounded-2xl border border-zinc-200/80 bg-white shadow-sm shadow-zinc-200/40 dark:border-zinc-800 dark:bg-zinc-900 dark:shadow-none">
                 {displayedFiles.map((file) => (
                   <div
                     key={file._id}
-                    className="flex flex-col gap-3 border-b border-zinc-100 px-5 py-3.5 transition-colors last:border-b-0 hover:bg-zinc-50/70 sm:flex-row sm:items-center sm:justify-between"
+                    className="flex flex-col gap-3 border-b border-zinc-100 px-5 py-3.5 transition-colors last:border-b-0 hover:bg-zinc-50/70 dark:border-zinc-800 dark:hover:bg-zinc-800/70 sm:flex-row sm:items-center sm:justify-between"
                   >
                     <button
                       type="button"
@@ -872,7 +872,7 @@ export default function DashboardPage() {
                       onClick={() => file.url && setPreviewFile(file)}
                       className="flex min-w-0 items-center gap-3 text-left disabled:cursor-default"
                     >
-                      <div className="flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-zinc-100 bg-zinc-50">
+                      <div className="flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-zinc-100 bg-zinc-50 dark:border-zinc-800 dark:bg-zinc-800">
                         {file.type === "image" && file.url ? (
                           <Image
                             src={file.url}
@@ -886,7 +886,7 @@ export default function DashboardPage() {
                         )}
                       </div>
                       <div className="min-w-0">
-                        <p className="truncate text-[15px] font-semibold text-zinc-900">
+                        <p className="truncate text-[15px] font-semibold text-zinc-900 dark:text-zinc-50">
                           {file.name}
                         </p>
                         <span className="text-[10px] font-medium uppercase tracking-wide text-zinc-400">
@@ -1008,11 +1008,11 @@ export default function DashboardPage() {
                 {displayedFiles.map((file) => (
                   <div
                     key={file._id}
-                    className="group flex flex-col overflow-hidden rounded-2xl border border-zinc-200/80 bg-white shadow-sm shadow-zinc-200/40 transition-all duration-150 hover:-translate-y-0.5 hover:border-zinc-300 hover:shadow-md hover:shadow-zinc-200/70"
+                    className="group flex flex-col overflow-hidden rounded-2xl border border-zinc-200/80 bg-white shadow-sm shadow-zinc-200/40 transition-all duration-150 hover:-translate-y-0.5 hover:border-zinc-300 hover:shadow-md hover:shadow-zinc-200/70 dark:border-zinc-800 dark:bg-zinc-900 dark:shadow-none dark:hover:border-zinc-700"
                   >
                     {/* Thumbnail */}
                     <div
-                      className="relative h-28 w-full cursor-pointer overflow-hidden bg-zinc-100"
+                      className="relative h-28 w-full cursor-pointer overflow-hidden bg-zinc-100 dark:bg-zinc-800"
                       onClick={() => file.url && setPreviewFile(file)}
                     >
                       {file.type === "image" && file.url ? (
@@ -1070,10 +1070,10 @@ export default function DashboardPage() {
                     {/* Info + actions */}
                     <div className="flex flex-1 flex-col gap-2 px-3 py-3">
                       <div className="flex items-start justify-between gap-2">
-                        <p className="line-clamp-1 text-[15px] font-semibold text-zinc-900">
+                        <p className="line-clamp-1 text-[15px] font-semibold text-zinc-900 dark:text-zinc-50">
                           {file.name}
                         </p>
-                        <span className="shrink-0 rounded bg-zinc-100 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-zinc-500">
+                        <span className="shrink-0 rounded bg-zinc-100 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-zinc-500 dark:bg-zinc-800 dark:text-zinc-400">
                           {file.type}
                         </span>
                       </div>
@@ -1690,8 +1690,8 @@ function SidebarItem({
       onClick={onClick}
       className={`flex w-full items-center gap-2.5 rounded-lg px-3 py-2.5 text-left text-sm transition-colors ${
         active
-          ? "bg-zinc-900 font-medium text-white"
-          : "text-zinc-600 hover:bg-zinc-50 hover:text-zinc-900"
+          ? "bg-zinc-900 font-medium text-white dark:bg-zinc-100 dark:text-zinc-950"
+          : "text-zinc-600 hover:bg-zinc-50 hover:text-zinc-900 dark:text-zinc-300 dark:hover:bg-zinc-900 dark:hover:text-white"
       }`}
     >
       {icon}

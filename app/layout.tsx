@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import "./globals.css";
 import ConvexClientProvider from "./_components/convex-client-provider";
 import { Header } from "./_components/header";
+import { ThemeProvider } from "./_components/theme-provider";
 import { Toaster } from "@/components/ui/sonner";
 
 export const metadata: Metadata = {
@@ -15,13 +16,15 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en">
+    <html lang="en" suppressHydrationWarning>
       <body>
-        <ConvexClientProvider>
-          <Toaster />
-          <Header />
-          {children}
-        </ConvexClientProvider>
+        <ThemeProvider>
+          <ConvexClientProvider>
+            <Toaster />
+            <Header />
+            {children}
+          </ConvexClientProvider>
+        </ThemeProvider>
       </body>
     </html>
   );

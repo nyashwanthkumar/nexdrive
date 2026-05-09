@@ -174,7 +174,7 @@ export function UploadButton({ folders = [] }: { folders?: FolderOption[] }) {
       <DialogTrigger asChild>
         <Button
           variant="outline"
-          className="h-14 w-auto rounded-2xl border-zinc-200 bg-white px-6 text-base font-medium text-zinc-950 shadow-md shadow-zinc-200/80 hover:bg-zinc-50 hover:text-zinc-950"
+          className="h-14 w-auto rounded-2xl border-zinc-200 bg-white px-6 text-base font-medium text-zinc-950 shadow-md shadow-zinc-200/80 hover:bg-zinc-50 hover:text-zinc-950 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-50 dark:shadow-none dark:hover:bg-zinc-800"
         >
           <Plus className="mr-2 h-5 w-5" />
           Upload
@@ -269,21 +269,21 @@ export function UploadButton({ folders = [] }: { folders?: FolderOption[] }) {
                     onDrop={handleDrop}
                     className={`flex min-h-44 w-full flex-col items-center justify-center rounded-xl border border-dashed px-6 py-8 text-center transition ${
                       isDragging
-                        ? "border-zinc-900 bg-zinc-100"
-                        : "border-zinc-300 bg-zinc-50 hover:border-zinc-400 hover:bg-white"
+                        ? "border-zinc-900 bg-zinc-100 dark:border-zinc-200 dark:bg-zinc-800"
+                        : "border-zinc-300 bg-zinc-50 hover:border-zinc-400 hover:bg-white dark:border-zinc-700 dark:bg-zinc-900 dark:hover:border-zinc-500 dark:hover:bg-zinc-800"
                     }`}
                   >
-                    <span className="flex h-12 w-12 items-center justify-center rounded-xl border border-zinc-200 bg-white text-zinc-700 shadow-sm">
+                    <span className="flex h-12 w-12 items-center justify-center rounded-xl border border-zinc-200 bg-white text-zinc-700 shadow-sm dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-200">
                       {selectedFile ? (
                         <FileUp className="h-5 w-5" />
                       ) : (
                         <UploadCloud className="h-5 w-5" />
                       )}
                     </span>
-                    <span className="mt-4 text-sm font-medium text-zinc-900">
+                    <span className="mt-4 text-sm font-medium text-zinc-900 dark:text-zinc-50">
                       {selectedFile ? selectedFile.name : "Drop a file here"}
                     </span>
-                    <span className="mt-1 text-xs text-zinc-500">
+                    <span className="mt-1 text-xs text-zinc-500 dark:text-zinc-400">
                       {selectedFile
                         ? `${formatFileSize(selectedFile.size)} selected`
                         : `or click to browse files up to ${formatFileSize(MAX_UPLOAD_SIZE)}`}

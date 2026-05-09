@@ -17,7 +17,7 @@ export default function SharedFilePage({
 
   if (file === undefined) {
     return (
-      <main className="flex min-h-[calc(100vh-64px)] items-center justify-center bg-[#f6f7f9]">
+      <main className="flex min-h-[calc(100vh-64px)] items-center justify-center bg-[#f6f7f9] dark:bg-zinc-950">
         <Loader2 className="h-5 w-5 animate-spin text-zinc-400" />
       </main>
     );
@@ -25,13 +25,13 @@ export default function SharedFilePage({
 
   if (!file) {
     return (
-      <main className="flex min-h-[calc(100vh-64px)] items-center justify-center bg-[#f6f7f9] px-4">
-        <section className="w-full max-w-md rounded-2xl border border-zinc-200 bg-white p-6 text-center shadow-sm">
-          <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-xl bg-zinc-100">
+      <main className="flex min-h-[calc(100vh-64px)] items-center justify-center bg-[#f6f7f9] px-4 dark:bg-zinc-950">
+        <section className="w-full max-w-md rounded-2xl border border-zinc-200 bg-white p-6 text-center shadow-sm dark:border-zinc-800 dark:bg-zinc-900 dark:shadow-none">
+          <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-xl bg-zinc-100 dark:bg-zinc-800">
             <FileText className="h-6 w-6 text-zinc-400" />
           </div>
-          <h1 className="mt-4 text-lg font-semibold text-zinc-950">Link unavailable</h1>
-          <p className="mt-1 text-sm text-zinc-500">
+          <h1 className="mt-4 text-lg font-semibold text-zinc-950 dark:text-zinc-50">Link unavailable</h1>
+          <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">
             This shared file link has expired or was removed.
           </p>
         </section>
@@ -40,15 +40,15 @@ export default function SharedFilePage({
   }
 
   return (
-    <main className="min-h-[calc(100vh-64px)] bg-[#f6f7f9] px-4 py-8">
-      <section className="mx-auto flex w-full max-w-4xl flex-col overflow-hidden rounded-2xl border border-zinc-200 bg-white shadow-sm">
-        <div className="flex flex-col gap-3 border-b border-zinc-100 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
+    <main className="min-h-[calc(100vh-64px)] bg-[#f6f7f9] px-4 py-8 dark:bg-zinc-950">
+      <section className="mx-auto flex w-full max-w-4xl flex-col overflow-hidden rounded-2xl border border-zinc-200 bg-white shadow-sm dark:border-zinc-800 dark:bg-zinc-900 dark:shadow-none">
+        <div className="flex flex-col gap-3 border-b border-zinc-100 px-5 py-4 dark:border-zinc-800 sm:flex-row sm:items-center sm:justify-between">
           <div className="min-w-0">
             <p className="text-xs font-medium uppercase tracking-wide text-zinc-400">
               Shared with NexDrive
             </p>
-            <h1 className="mt-1 truncate text-lg font-semibold text-zinc-950">{file.name}</h1>
-            <p className="mt-1 text-xs text-zinc-500">
+            <h1 className="mt-1 truncate text-lg font-semibold text-zinc-950 dark:text-zinc-50">{file.name}</h1>
+            <p className="mt-1 text-xs text-zinc-500 dark:text-zinc-400">
               Expires {new Date(file.expiresAt).toLocaleString()}
             </p>
           </div>
@@ -60,7 +60,7 @@ export default function SharedFilePage({
           </Button>
         </div>
 
-        <div className="flex min-h-[420px] items-center justify-center bg-zinc-50">
+        <div className="flex min-h-[420px] items-center justify-center bg-zinc-50 dark:bg-zinc-950">
           {file.type === "image" && file.url ? (
             <div className="relative h-[70vh] max-h-[720px] w-full">
               <Image
