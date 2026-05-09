@@ -27,6 +27,7 @@ import {
   Copy,
   Download,
   Eye,
+  Files,
   FileSpreadsheet,
   FileText,
   FolderOpen,
@@ -43,6 +44,7 @@ import {
   Plus,
   RotateCcw,
   Search,
+  Share2,
   Star,
   Sun,
   Trash2,
@@ -76,6 +78,7 @@ type FileItem = {
   orgId: string;
   userId?: string;
   type: string;
+  size?: number;
   url?: string | null;
   isFavorite?: boolean;
   folderId?: Id<"folders">;
@@ -95,9 +98,12 @@ export default function DashboardPage() {
   const renameFile = useMutation(api.files.renameFile);
   const createFolder = useMutation(api.files.createFolder);
   const deleteFolder = useMutation(api.files.deleteFolder);
+  const restoreFolder = useMutation(api.files.restoreFolder);
+  const permanentlyDeleteFolder = useMutation(api.files.permanentlyDeleteFolder);
   const renameFolder = useMutation(api.files.renameFolder);
   const toggleFavoriteFolder = useMutation(api.files.toggleFavoriteFolder);
   const createShareLink = useMutation(api.files.createShareLink);
+  const revokeShareLink = useMutation(api.files.revokeShareLink);
 
   const [search, setSearch] = useState("");
   const [activeView, setActiveView] = useState<ViewType>("recent");
@@ -128,6 +134,9 @@ export default function DashboardPage() {
   const [shareUrl, setShareUrl] = useState("");
   const [isCreatingShareLink, setIsCreatingShareLink] = useState(false);
   const [isMobileNavOpen, setIsMobileNavOpen] = useState(false);
+  const [selectedFileIds, setSelectedFileIds] = useState<Id<"files">[]>([]);
+  const [isBulkWorking, setIsBulkWorking] = useState(false);
+  const [isSharesDialogOpen, setIsSharesDialogOpen] = useState(false);
 
   const orgId = organization?.id ?? user?.id;
 
@@ -149,6 +158,14 @@ export default function DashboardPage() {
   const userRole = useQuery(api.files.getUserRole, orgId ? {} : "skip");
   const activityLogs = useQuery(
     api.files.getActivityLogs,
+    orgId ? { orgId } : "skip"
+  );
+  const storageStats = useQuery(
+    api.files.getStorageStats,
+    orgId ? { orgId } : "skip"
+  );
+  const shareLinks = useQuery(
+    api.files.getShareLinks,
     orgId ? { orgId } : "skip"
   );
 
@@ -213,6 +230,12 @@ export default function DashboardPage() {
     });
   }, [activeFiles, trashFiles, search, activeView, sortMode, currentFolderId]);
 
+  useEffect(() => {
+    setSelectedFileIds((current) =>
+      current.filter((fileId) => displayedFiles.some((file) => file._id === fileId))
+    );
+  }, [displayedFiles]);
+
   const workspaceTitle = organization ? organization.name : "Personal";
 
   if (!isLoaded || !isSignedIn) {
@@ -252,17 +275,63 @@ export default function DashboardPage() {
   const visibleFolders =
     activeView === "folders" && !currentFolderId
       ? [...(folders ?? [])]
-          .filter((folder) => folder.name.toLowerCase().includes(search.toLowerCase()))
+          .filter(
+            (folder) =>
+              !(folder.shouldDelete ?? false) &&
+              folder.name.toLowerCase().includes(search.toLowerCase())
+          )
           .sort((a, b) => a.name.localeCompare(b.name))
       : activeView === "starred"
       ? [...(folders ?? [])]
           .filter(
             (folder) =>
+              !(folder.shouldDelete ?? false) &&
               (folder.isFavorite ?? false) &&
               folder.name.toLowerCase().includes(search.toLowerCase())
           )
           .sort((a, b) => a.name.localeCompare(b.name))
+      : activeView === "trash"
+      ? [...(folders ?? [])]
+          .filter(
+            (folder) =>
+              (folder.shouldDelete ?? false) &&
+              folder.name.toLowerCase().includes(search.toLowerCase())
+          )
+          .sort((a, b) => (b.deletedAt ?? 0) - (a.deletedAt ?? 0))
       : [];
+
+  const selectedFiles = displayedFiles.filter((file) => selectedFileIds.includes(file._id));
+  const activeShares = (shareLinks ?? []).filter((share) => !share.isExpired && !share.isRevoked);
+  const storageTotal = storageStats?.totalSize ?? 0;
+  const storageLimit = 500 * 1024 * 1024;
+  const storagePercent = Math.min(100, Math.round((storageTotal / storageLimit) * 100));
+
+  function formatBytes(size: number) {
+    if (!size) return "0 MB";
+    if (size < 1024 * 1024) return `${Math.max(1, Math.round(size / 1024))} KB`;
+    if (size < 1024 * 1024 * 1024) return `${(size / (1024 * 1024)).toFixed(1)} MB`;
+    return `${(size / (1024 * 1024 * 1024)).toFixed(1)} GB`;
+  }
+
+  function toggleSelectedFile(fileId: Id<"files">) {
+    setSelectedFileIds((current) =>
+      current.includes(fileId)
+        ? current.filter((id) => id !== fileId)
+        : [...current, fileId]
+    );
+  }
+
+  function toggleSelectAllVisible() {
+    const manageableIds = displayedFiles
+      .filter((file) => activeView === "trash" || canManageFile(file))
+      .map((file) => file._id);
+
+    setSelectedFileIds((current) =>
+      manageableIds.length > 0 && manageableIds.every((id) => current.includes(id))
+        ? current.filter((id) => !manageableIds.includes(id))
+        : Array.from(new Set([...current, ...manageableIds]))
+    );
+  }
 
   function openRenameDialog(file: FileItem) {
     setRenamingFile(file);
@@ -355,7 +424,31 @@ export default function DashboardPage() {
       }
 
       setFolderPendingDelete(null);
-      toast.success("Folder deleted");
+      toast.success("Folder moved to trash");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Failed to delete folder");
+    } finally {
+      setDeletingFolderId(null);
+    }
+  }
+
+  async function handleRestoreFolder(folderId: Id<"folders">) {
+    try {
+      setDeletingFolderId(folderId);
+      await restoreFolder({ folderId });
+      toast.success("Folder restored");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Failed to restore folder");
+    } finally {
+      setDeletingFolderId(null);
+    }
+  }
+
+  async function handlePermanentlyDeleteFolder(folderId: Id<"folders">) {
+    try {
+      setDeletingFolderId(folderId);
+      await permanentlyDeleteFolder({ folderId });
+      toast.success("Folder permanently deleted");
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Failed to delete folder");
     } finally {
@@ -406,6 +499,51 @@ export default function DashboardPage() {
       toast.error(error instanceof Error ? error.message : "Failed to create share link");
     } finally {
       setIsCreatingShareLink(false);
+    }
+  }
+
+  async function bulkDeleteSelected() {
+    if (selectedFiles.length === 0) return;
+
+    try {
+      setIsBulkWorking(true);
+
+      for (const file of selectedFiles) {
+        if (!canManageFile(file)) continue;
+        if (activeView === "trash") {
+          await permanentlyDeleteFile({ fileId: file._id });
+        } else {
+          await deleteFile({ fileId: file._id });
+        }
+      }
+
+      toast.success(activeView === "trash" ? "Selected files deleted" : "Selected files moved to trash");
+      setSelectedFileIds([]);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Bulk action failed");
+    } finally {
+      setIsBulkWorking(false);
+    }
+  }
+
+  async function bulkRestoreSelected() {
+    if (selectedFiles.length === 0) return;
+
+    try {
+      setIsBulkWorking(true);
+
+      for (const file of selectedFiles) {
+        if (canManageFile(file)) {
+          await restoreFile({ fileId: file._id });
+        }
+      }
+
+      toast.success("Selected files restored");
+      setSelectedFileIds([]);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Failed to restore selected files");
+    } finally {
+      setIsBulkWorking(false);
     }
   }
 
@@ -466,6 +604,28 @@ export default function DashboardPage() {
                   {isDarkTheme ? "On" : "Off"}
                 </span>
               </button>
+              {storageStats && (
+                <div className="mb-1 rounded-lg border border-zinc-200 bg-zinc-50 px-3 py-2.5 dark:border-zinc-800 dark:bg-zinc-900 lg:hidden">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="flex items-center gap-2 text-sm font-medium text-zinc-700 dark:text-zinc-200">
+                      <Files className="h-4 w-4" />
+                      Storage
+                    </span>
+                    <span className="text-xs text-zinc-400">
+                      {storagePercent}%
+                    </span>
+                  </div>
+                  <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-zinc-200 dark:bg-zinc-800">
+                    <div
+                      className="h-full rounded-full bg-zinc-900 dark:bg-zinc-100"
+                      style={{ width: `${storagePercent}%` }}
+                    />
+                  </div>
+                  <p className="mt-2 text-xs text-zinc-500 dark:text-zinc-400">
+                    {formatBytes(storageTotal)} of {formatBytes(storageLimit)} · {storageStats.fileCount} files
+                  </p>
+                </div>
+              )}
               <SidebarItem
                 active={activeView === "recent"}
                 icon={<Clock className="h-4 w-4" />}
@@ -559,7 +719,38 @@ export default function DashboardPage() {
               />
             </nav>
 
-            <div className="mt-auto hidden border-t border-zinc-100 pt-4 lg:block">
+            {storageStats && (
+              <div className="hidden border-t border-zinc-100 pt-4 dark:border-zinc-800 lg:block">
+                <p className="mb-2 px-3 text-[10px] font-semibold uppercase tracking-widest text-zinc-400 dark:text-zinc-500">
+                  Storage
+                </p>
+                <div className="rounded-xl border border-zinc-100 bg-zinc-50/80 px-3 py-3 dark:border-zinc-800 dark:bg-zinc-900">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-xs font-medium text-zinc-600 dark:text-zinc-300">
+                      {formatBytes(storageTotal)}
+                    </span>
+                    <span className="text-[11px] text-zinc-400">
+                      {storagePercent}%
+                    </span>
+                  </div>
+                  <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-zinc-200 dark:bg-zinc-800">
+                    <div
+                      className="h-full rounded-full bg-zinc-900 dark:bg-zinc-100"
+                      style={{ width: `${storagePercent}%` }}
+                    />
+                  </div>
+                  <div className="mt-2 flex justify-between text-[11px] text-zinc-400 dark:text-zinc-500">
+                    <span>{formatBytes(storageLimit)} total</span>
+                    <span>{storageStats.fileCount} files</span>
+                  </div>
+                  <div className="mt-1 text-[11px] text-zinc-400 dark:text-zinc-500">
+                    {activeShares.length} active shares
+                  </div>
+                </div>
+              </div>
+            )}
+
+            <div className="mt-auto hidden border-t border-zinc-100 pt-4 dark:border-zinc-800 lg:block">
               <p className="mb-2 px-3 text-[10px] font-semibold uppercase tracking-widest text-zinc-400 dark:text-zinc-500">
                 Workspace
               </p>
@@ -598,12 +789,12 @@ export default function DashboardPage() {
                 <h1 className="text-xl font-semibold tracking-tight text-zinc-950 dark:text-zinc-50">{viewMeta.label}</h1>
                 <p className="mt-0.5 text-xs text-zinc-500 dark:text-zinc-400">{viewMeta.description}</p>
               </div>
-              <div className="flex flex-wrap items-center gap-3">
+              <div className="flex flex-wrap items-center justify-end gap-2 rounded-2xl border border-zinc-200/80 bg-white/85 p-1.5 shadow-sm shadow-zinc-200/50 backdrop-blur dark:border-zinc-800 dark:bg-zinc-900/85 dark:shadow-none">
                 {activeView === "folders" && !currentFolderId && (
                   <Button
                     variant="outline"
                     size="sm"
-                    className="rounded-full"
+                    className="h-9 rounded-xl border-transparent bg-transparent px-3 shadow-none hover:bg-zinc-100 dark:hover:bg-zinc-800"
                     onClick={() => setIsFolderDialogOpen(true)}
                   >
                     <Plus className="mr-1.5 h-3.5 w-3.5" />
@@ -611,12 +802,38 @@ export default function DashboardPage() {
                   </Button>
                 )}
                 {!isLoading && displayedFiles.length + visibleFolders.length > 0 && (
-                  <span className="text-xs text-zinc-400">
+                  <span className="hidden rounded-lg bg-zinc-100 px-2.5 py-2 text-xs font-medium text-zinc-500 dark:bg-zinc-800 dark:text-zinc-400 sm:inline-flex">
                     {displayedFiles.length + visibleFolders.length}{" "}
                     {displayedFiles.length + visibleFolders.length === 1 ? "item" : "items"}
                   </span>
                 )}
-                <div className="flex h-9 items-center gap-2 rounded-full border border-zinc-300 bg-white px-3 text-sm shadow-sm dark:border-zinc-700 dark:bg-zinc-900 dark:shadow-none">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-9 rounded-xl border-transparent bg-transparent px-3 shadow-none hover:bg-zinc-100 dark:hover:bg-zinc-800"
+                  onClick={() => setIsSharesDialogOpen(true)}
+                >
+                  <Share2 className="mr-1.5 h-3.5 w-3.5" />
+                  Shares
+                  {activeShares.length > 0 && (
+                    <span className="ml-1 rounded-full bg-zinc-900 px-1.5 py-0.5 text-[10px] text-white dark:bg-zinc-100 dark:text-zinc-950">
+                      {activeShares.length}
+                    </span>
+                  )}
+                </Button>
+                {displayedFiles.length > 0 && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-9 rounded-xl border-transparent bg-transparent px-3 shadow-none hover:bg-zinc-100 dark:hover:bg-zinc-800"
+                    onClick={toggleSelectAllVisible}
+                  >
+                    <Check className="mr-1.5 h-3.5 w-3.5" />
+                    Select
+                  </Button>
+                )}
+                <div className="hidden h-6 w-px bg-zinc-200 dark:bg-zinc-800 sm:block" />
+                <div className="flex h-9 items-center gap-2 rounded-xl bg-zinc-100 px-3 text-sm dark:bg-zinc-800">
                   {sortMode === "nameAsc" ? (
                     <ArrowDownAZ className="h-4 w-4 text-zinc-500" />
                   ) : sortMode === "nameDesc" ? (
@@ -636,15 +853,15 @@ export default function DashboardPage() {
                     <option value="nameDesc">Name Z-A</option>
                   </select>
                 </div>
-                <div className="flex h-9 overflow-hidden rounded-full border border-zinc-300 bg-white p-0.5 shadow-sm dark:border-zinc-700 dark:bg-zinc-900 dark:shadow-none">
+                <div className="flex h-9 overflow-hidden rounded-xl bg-zinc-100 p-0.5 dark:bg-zinc-800">
                   <button
                     type="button"
                     aria-label="List view"
                     onClick={() => setDisplayMode("list")}
-                    className={`flex h-8 w-11 items-center justify-center rounded-full transition-colors ${
+                    className={`flex h-8 w-10 items-center justify-center rounded-lg transition-colors ${
                       displayMode === "list"
-                        ? "bg-zinc-900 text-white"
-                        : "text-zinc-500 hover:bg-zinc-50 hover:text-zinc-900"
+                        ? "bg-zinc-900 text-white shadow-sm dark:bg-zinc-100 dark:text-zinc-950"
+                        : "text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100"
                     }`}
                   >
                     {displayMode === "list" ? (
@@ -657,10 +874,10 @@ export default function DashboardPage() {
                     type="button"
                     aria-label="Grid view"
                     onClick={() => setDisplayMode("grid")}
-                    className={`flex h-8 w-11 items-center justify-center rounded-full transition-colors ${
+                    className={`flex h-8 w-10 items-center justify-center rounded-lg transition-colors ${
                       displayMode === "grid"
-                        ? "bg-zinc-900 text-white"
-                        : "text-zinc-500 hover:bg-zinc-50 hover:text-zinc-900"
+                        ? "bg-zinc-900 text-white shadow-sm dark:bg-zinc-100 dark:text-zinc-950"
+                        : "text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100"
                     }`}
                   >
                     {displayMode === "grid" ? (
@@ -672,6 +889,39 @@ export default function DashboardPage() {
                 </div>
               </div>
             </div>
+
+            {selectedFileIds.length > 0 && (
+              <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-zinc-200/80 bg-white px-4 py-3 shadow-sm shadow-zinc-200/40 dark:border-zinc-800 dark:bg-zinc-900 dark:shadow-none">
+                <span className="text-sm font-medium text-zinc-800 dark:text-zinc-100">
+                  {selectedFileIds.length} selected
+                </span>
+                <div className="flex flex-wrap gap-2">
+                  <Button variant="outline" size="sm" onClick={() => setSelectedFileIds([])}>
+                    Clear
+                  </Button>
+                  {activeView === "trash" ? (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      disabled={isBulkWorking}
+                      onClick={bulkRestoreSelected}
+                    >
+                      <RotateCcw className="mr-1.5 h-3.5 w-3.5" />
+                      Restore
+                    </Button>
+                  ) : null}
+                  <Button
+                    variant="destructive"
+                    size="sm"
+                    disabled={isBulkWorking}
+                    onClick={bulkDeleteSelected}
+                  >
+                    <Trash2 className="mr-1.5 h-3.5 w-3.5" />
+                    {activeView === "trash" ? "Delete forever" : "Move to trash"}
+                  </Button>
+                </div>
+              </div>
+            )}
 
             {/* Loading */}
             {isLoading && (
@@ -687,7 +937,7 @@ export default function DashboardPage() {
               visibleFolders.length === 0 &&
               (activeView !== "activity" || (activityLogs ?? []).length === 0) && (
               <div className="flex flex-1 flex-col items-center justify-center gap-3 py-24 text-center">
-                <div className="flex h-11 w-11 items-center justify-center rounded-xl border border-zinc-200 bg-white">
+                <div className="flex h-11 w-11 items-center justify-center rounded-lg border border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-900">
                   {activeView === "trash" ? (
                     <Trash2 className="h-5 w-5 text-zinc-400" />
                   ) : activeView === "activity" ? (
@@ -798,7 +1048,9 @@ export default function DashboardPage() {
                   >
                     <button
                       type="button"
-                      onClick={() => setCurrentFolderId(folder._id)}
+                      onClick={() => {
+                        if (activeView !== "trash") setCurrentFolderId(folder._id);
+                      }}
                       className="flex min-w-0 flex-1 items-center gap-3 text-left"
                     >
                       <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-zinc-50 text-zinc-700 dark:bg-zinc-800 dark:text-zinc-200">
@@ -810,25 +1062,49 @@ export default function DashboardPage() {
                         </span>
                       </span>
                     </button>
-                    <FolderActionsMenu
-                      isFavorite={folder.isFavorite ?? false}
-                      isOpen={folderMenuId === folder._id}
-                      isDeleting={deletingFolderId === folder._id}
-                      canManage={canManageFolder(folder)}
-                      onToggle={() =>
-                        setFolderMenuId((current) =>
-                          current === folder._id ? null : folder._id
-                        )
-                      }
-                      onDelete={() => {
-                        setFolderMenuId(null);
-                        setFolderPendingDelete({ id: folder._id, name: folder.name });
-                      }}
-                      onRename={() => openRenameFolderDialog(folder)}
-                      onToggleFavorite={() =>
-                        handleToggleFolderFavorite(folder._id, folder.isFavorite ?? false)
-                      }
-                    />
+                    {activeView === "trash" ? (
+                      <div className="flex shrink-0 items-center gap-2">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="h-8 rounded-lg text-xs"
+                          disabled={deletingFolderId === folder._id || !canManageFolder(folder)}
+                          onClick={() => handleRestoreFolder(folder._id)}
+                        >
+                          <RotateCcw className="mr-1.5 h-3.5 w-3.5" />
+                          Restore
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-8 rounded-lg px-2 text-zinc-400 hover:bg-red-50 hover:text-red-500"
+                          disabled={deletingFolderId === folder._id || !canManageFolder(folder)}
+                          onClick={() => handlePermanentlyDeleteFolder(folder._id)}
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </Button>
+                      </div>
+                    ) : (
+                      <FolderActionsMenu
+                        isFavorite={folder.isFavorite ?? false}
+                        isOpen={folderMenuId === folder._id}
+                        isDeleting={deletingFolderId === folder._id}
+                        canManage={canManageFolder(folder)}
+                        onToggle={() =>
+                          setFolderMenuId((current) =>
+                            current === folder._id ? null : folder._id
+                          )
+                        }
+                        onDelete={() => {
+                          setFolderMenuId(null);
+                          setFolderPendingDelete({ id: folder._id, name: folder.name });
+                        }}
+                        onRename={() => openRenameFolderDialog(folder)}
+                        onToggleFavorite={() =>
+                          handleToggleFolderFavorite(folder._id, folder.isFavorite ?? false)
+                        }
+                      />
+                    )}
                   </div>
                 ))}
               </div>
@@ -843,7 +1119,9 @@ export default function DashboardPage() {
                   >
                     <button
                       type="button"
-                      onClick={() => setCurrentFolderId(folder._id)}
+                      onClick={() => {
+                        if (activeView !== "trash") setCurrentFolderId(folder._id);
+                      }}
                       className="flex min-w-0 flex-1 items-center gap-3 text-left"
                     >
                       <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-zinc-50">
@@ -855,25 +1133,49 @@ export default function DashboardPage() {
                         </span>
                       </span>
                     </button>
-                    <FolderActionsMenu
-                      isFavorite={folder.isFavorite ?? false}
-                      isOpen={folderMenuId === folder._id}
-                      isDeleting={deletingFolderId === folder._id}
-                      canManage={canManageFolder(folder)}
-                      onToggle={() =>
-                        setFolderMenuId((current) =>
-                          current === folder._id ? null : folder._id
-                        )
-                      }
-                      onDelete={() => {
-                        setFolderMenuId(null);
-                        setFolderPendingDelete({ id: folder._id, name: folder.name });
-                      }}
-                      onRename={() => openRenameFolderDialog(folder)}
-                      onToggleFavorite={() =>
-                        handleToggleFolderFavorite(folder._id, folder.isFavorite ?? false)
-                      }
-                    />
+                    {activeView === "trash" ? (
+                      <div className="flex shrink-0 items-center gap-2">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="h-8 rounded-lg text-xs"
+                          disabled={deletingFolderId === folder._id || !canManageFolder(folder)}
+                          onClick={() => handleRestoreFolder(folder._id)}
+                        >
+                          <RotateCcw className="mr-1.5 h-3.5 w-3.5" />
+                          Restore
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-8 rounded-lg px-2 text-zinc-400 hover:bg-red-50 hover:text-red-500"
+                          disabled={deletingFolderId === folder._id || !canManageFolder(folder)}
+                          onClick={() => handlePermanentlyDeleteFolder(folder._id)}
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </Button>
+                      </div>
+                    ) : (
+                      <FolderActionsMenu
+                        isFavorite={folder.isFavorite ?? false}
+                        isOpen={folderMenuId === folder._id}
+                        isDeleting={deletingFolderId === folder._id}
+                        canManage={canManageFolder(folder)}
+                        onToggle={() =>
+                          setFolderMenuId((current) =>
+                            current === folder._id ? null : folder._id
+                          )
+                        }
+                        onDelete={() => {
+                          setFolderMenuId(null);
+                          setFolderPendingDelete({ id: folder._id, name: folder.name });
+                        }}
+                        onRename={() => openRenameFolderDialog(folder)}
+                        onToggleFavorite={() =>
+                          handleToggleFolderFavorite(folder._id, folder.isFavorite ?? false)
+                        }
+                      />
+                    )}
                   </div>
                 ))}
               </div>
@@ -887,6 +1189,19 @@ export default function DashboardPage() {
                     key={file._id}
                     className="flex flex-col gap-3 border-b border-zinc-100 px-5 py-3.5 transition-colors last:border-b-0 hover:bg-zinc-50/70 dark:border-zinc-800 dark:hover:bg-zinc-800/70 sm:flex-row sm:items-center sm:justify-between"
                   >
+                    <button
+                      type="button"
+                      aria-label={selectedFileIds.includes(file._id) ? "Unselect file" : "Select file"}
+                      disabled={!canManageFile(file)}
+                      onClick={() => toggleSelectedFile(file._id)}
+                      className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border transition disabled:cursor-not-allowed disabled:opacity-40 ${
+                        selectedFileIds.includes(file._id)
+                          ? "border-zinc-900 bg-zinc-900 text-white dark:border-zinc-100 dark:bg-zinc-100 dark:text-zinc-950"
+                          : "border-zinc-200 bg-white text-zinc-400 hover:border-zinc-300 dark:border-zinc-700 dark:bg-zinc-900"
+                      }`}
+                    >
+                      {selectedFileIds.includes(file._id) && <Check className="h-4 w-4" />}
+                    </button>
                     <button
                       type="button"
                       disabled={!file.url}
@@ -1059,6 +1374,23 @@ export default function DashboardPage() {
                           </span>
                         </div>
                       )}
+
+                      <button
+                        type="button"
+                        aria-label={selectedFileIds.includes(file._id) ? "Unselect file" : "Select file"}
+                        disabled={!canManageFile(file)}
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          toggleSelectedFile(file._id);
+                        }}
+                        className={`absolute left-2 top-2 z-10 flex h-7 w-7 items-center justify-center rounded-full border shadow-sm transition disabled:cursor-not-allowed disabled:opacity-40 ${
+                          selectedFileIds.includes(file._id)
+                            ? "border-zinc-900 bg-zinc-900 text-white opacity-100 dark:border-zinc-100 dark:bg-zinc-100 dark:text-zinc-950"
+                            : "border-zinc-200 bg-white text-zinc-400 opacity-0 group-hover:opacity-100 dark:border-zinc-700 dark:bg-zinc-900"
+                        }`}
+                      >
+                        {selectedFileIds.includes(file._id) && <Check className="h-3.5 w-3.5" />}
+                      </button>
 
                       {/* Favourite star */}
                       {activeView !== "trash" && (
@@ -1360,6 +1692,85 @@ export default function DashboardPage() {
           </div>
         </div>
       )}
+
+      <Dialog
+        open={isSharesDialogOpen}
+        onOpenChange={setIsSharesDialogOpen}
+      >
+        <DialogContent className="gap-5 p-5 sm:max-w-2xl">
+          <DialogHeader>
+            <DialogTitle className="text-xl">Shared links</DialogTitle>
+            <DialogDescription>
+              Review active and expired links without adding more controls to each file.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="max-h-[420px] space-y-2 overflow-auto">
+            {(shareLinks ?? []).length === 0 ? (
+              <div className="rounded-xl border border-zinc-200 bg-zinc-50 p-5 text-center text-sm text-zinc-500 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-400">
+                No shared links yet.
+              </div>
+            ) : (
+              (shareLinks ?? []).map((share) => {
+                const shareUrlValue =
+                  typeof window === "undefined" ? "" : `${window.location.origin}/share/${share.token}`;
+                const inactive = share.isExpired || share.isRevoked;
+
+                return (
+                  <div
+                    key={share._id}
+                    className="flex flex-col gap-3 rounded-xl border border-zinc-200 bg-white p-3 dark:border-zinc-800 dark:bg-zinc-900 sm:flex-row sm:items-center sm:justify-between"
+                  >
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-medium text-zinc-900 dark:text-zinc-50">
+                        {share.fileName}
+                      </p>
+                      <p className="mt-1 text-xs text-zinc-500 dark:text-zinc-400">
+                        {inactive
+                          ? share.isRevoked
+                            ? "Revoked"
+                            : "Expired"
+                          : `Expires ${new Date(share.expiresAt).toLocaleString()}`}
+                      </p>
+                    </div>
+                    <div className="flex shrink-0 gap-2">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        disabled={inactive}
+                        onClick={async () => {
+                          await navigator.clipboard?.writeText(shareUrlValue);
+                          toast.success("Link copied");
+                        }}
+                      >
+                        <Copy className="mr-1.5 h-3.5 w-3.5" />
+                        Copy
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="destructive"
+                        size="sm"
+                        disabled={inactive}
+                        onClick={async () => {
+                          try {
+                            await revokeShareLink({ shareId: share._id });
+                            toast.success("Share link revoked");
+                          } catch (error) {
+                            toast.error(error instanceof Error ? error.message : "Failed to revoke link");
+                          }
+                        }}
+                      >
+                        Revoke
+                      </Button>
+                    </div>
+                  </div>
+                );
+              })
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
 
       <Dialog
         open={!!sharingFile}

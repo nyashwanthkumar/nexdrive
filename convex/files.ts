@@ -35,7 +35,7 @@ async function logFileActivity(
   args: {
     orgId: string;
     userId: string;
-    action: "uploaded" | "renamed" | "trashed" | "restored" | "shared";
+    action: "uploaded" | "renamed" | "trashed" | "restored" | "shared" | "revoked_share";
     fileId?: Id<"files">;
     fileName: string;
   }
@@ -65,6 +65,7 @@ export const createFile = mutation({
     orgId: v.string(),
     fileId: v.id("_storage"),
     folderId: v.optional(v.id("folders")),
+    size: v.optional(v.number()),
     type: v.union(
       v.literal("image"),
       v.literal("pdf"),
@@ -99,6 +100,7 @@ export const createFile = mutation({
       userId: identity.subject,
       fileId: args.fileId,
       folderId: args.folderId,
+      size: args.size,
       type: args.type,
       isFavorite: false,
       shouldDelete: false,
@@ -313,6 +315,8 @@ export const createFolder = mutation({
       orgId: args.orgId,
       userId: identity.subject,
       isFavorite: false,
+      shouldDelete: false,
+      deletedAt: undefined,
     });
   },
 });
@@ -340,6 +344,7 @@ export const getFolders = query({
         folders.map((folder) => ({
           ...folder,
           isFavorite: folder.isFavorite ?? false,
+          shouldDelete: folder.shouldDelete ?? false,
         }))
       );
   },
@@ -416,6 +421,104 @@ export const deleteFolder = mutation({
       await ctx.db.patch(file._id, {
         folderId: undefined,
       });
+    }
+
+    await ctx.db.patch(args.folderId, {
+      shouldDelete: true,
+      deletedAt: Date.now(),
+    });
+
+    await logFileActivity(ctx, {
+      orgId: folder.orgId,
+      userId: identity.subject,
+      action: "trashed",
+      fileName: folder.name,
+    });
+  },
+});
+
+export const restoreFolder = mutation({
+  args: {
+    folderId: v.id("folders"),
+  },
+  handler: async (ctx, args) => {
+    const identity = await ctx.auth.getUserIdentity();
+
+    if (!identity) {
+      throw new Error("you must be logged in");
+    }
+
+    const folder = await ctx.db.get(args.folderId);
+
+    if (!folder) {
+      throw new Error("Folder not found");
+    }
+
+    const personalWorkspace = isPersonalWorkspace(folder.orgId);
+    const owner = isFolderOwner(folder, identity);
+    const admin = isOrgAdmin(identity.orgRole);
+
+    if (!canAccessWorkspace(folder.orgId, identity)) {
+      throw new Error("You do not have access to this folder");
+    }
+
+    if (personalWorkspace) {
+      if (!owner) {
+        throw new Error("You can only restore your own folders");
+      }
+    } else {
+      if (!admin && !owner) {
+        throw new Error("Only the creator or organization admin can restore folders");
+      }
+    }
+
+    await ctx.db.patch(args.folderId, {
+      shouldDelete: false,
+      deletedAt: undefined,
+    });
+
+    await logFileActivity(ctx, {
+      orgId: folder.orgId,
+      userId: identity.subject,
+      action: "restored",
+      fileName: folder.name,
+    });
+  },
+});
+
+export const permanentlyDeleteFolder = mutation({
+  args: {
+    folderId: v.id("folders"),
+  },
+  handler: async (ctx, args) => {
+    const identity = await ctx.auth.getUserIdentity();
+
+    if (!identity) {
+      throw new Error("you must be logged in");
+    }
+
+    const folder = await ctx.db.get(args.folderId);
+
+    if (!folder) {
+      throw new Error("Folder not found");
+    }
+
+    const personalWorkspace = isPersonalWorkspace(folder.orgId);
+    const owner = isFolderOwner(folder, identity);
+    const admin = isOrgAdmin(identity.orgRole);
+
+    if (!canAccessWorkspace(folder.orgId, identity)) {
+      throw new Error("You do not have access to this folder");
+    }
+
+    if (personalWorkspace) {
+      if (!owner) {
+        throw new Error("You can only permanently delete your own folders");
+      }
+    } else {
+      if (!admin && !owner) {
+        throw new Error("Only the creator or organization admin can permanently delete folders");
+      }
     }
 
     await ctx.db.delete(args.folderId);
@@ -600,7 +703,7 @@ export const getSharedFile = query({
       .withIndex("by_token", (q) => q.eq("token", args.token))
       .first();
 
-    if (!share || share.expiresAt <= Date.now()) {
+    if (!share || share.revokedAt || share.expiresAt <= Date.now()) {
       return null;
     }
 
@@ -615,6 +718,115 @@ export const getSharedFile = query({
       type: file.type,
       expiresAt: share.expiresAt,
       url: await ctx.storage.getUrl(file.fileId),
+    };
+  },
+});
+
+export const getShareLinks = query({
+  args: {
+    orgId: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const identity = await ctx.auth.getUserIdentity();
+
+    if (!identity || !canAccessWorkspace(args.orgId, identity)) {
+      return [];
+    }
+
+    const shares = await ctx.db
+      .query("shareLinks")
+      .withIndex("by_org", (q) => q.eq("orgId", args.orgId))
+      .order("desc")
+      .collect();
+
+    const now = Date.now();
+
+    return (
+      await Promise.all(
+        shares.map(async (share) => {
+          const file = await ctx.db.get(share.fileId);
+
+          if (!file) return null;
+
+          return {
+            ...share,
+            fileName: file.name,
+            fileType: file.type,
+            isExpired: share.expiresAt <= now,
+            isRevoked: !!share.revokedAt,
+          };
+        })
+      )
+    ).filter((share) => share !== null);
+  },
+});
+
+export const revokeShareLink = mutation({
+  args: {
+    shareId: v.id("shareLinks"),
+  },
+  handler: async (ctx, args) => {
+    const identity = await ctx.auth.getUserIdentity();
+
+    if (!identity) {
+      throw new Error("you must be logged in");
+    }
+
+    const share = await ctx.db.get(args.shareId);
+
+    if (!share) {
+      throw new Error("Share link not found");
+    }
+
+    if (!canAccessWorkspace(share.orgId, identity)) {
+      throw new Error("You do not have access to this share link");
+    }
+
+    const file = await ctx.db.get(share.fileId);
+
+    await ctx.db.patch(args.shareId, {
+      revokedAt: Date.now(),
+    });
+
+    if (file) {
+      await logFileActivity(ctx, {
+        orgId: share.orgId,
+        userId: identity.subject,
+        action: "revoked_share",
+        fileId: share.fileId,
+        fileName: file.name,
+      });
+    }
+  },
+});
+
+export const getStorageStats = query({
+  args: {
+    orgId: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const identity = await ctx.auth.getUserIdentity();
+
+    if (!identity || !canAccessWorkspace(args.orgId, identity)) {
+      return null;
+    }
+
+    const files = await ctx.db
+      .query("files")
+      .withIndex("by_org", (q) => q.eq("orgId", args.orgId))
+      .collect();
+
+    const activeFiles = files.filter((file) => !(file.shouldDelete ?? false));
+    const totalSize = activeFiles.reduce((sum, file) => sum + (file.size ?? 0), 0);
+    const byType = activeFiles.reduce<Record<string, number>>((acc, file) => {
+      acc[file.type] = (acc[file.type] ?? 0) + (file.size ?? 0);
+      return acc;
+    }, {});
+
+    return {
+      fileCount: activeFiles.length,
+      totalSize,
+      byType,
     };
   },
 });

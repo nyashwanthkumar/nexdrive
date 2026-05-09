@@ -142,6 +142,7 @@ export function UploadButton({ folders = [] }: { folders?: FolderOption[] }) {
         name: values.title,
         orgId,
         fileId: storageId,
+        size: selectedFile.size,
         folderId:
           values.folderId === "root"
             ? undefined

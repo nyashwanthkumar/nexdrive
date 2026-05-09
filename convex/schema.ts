@@ -8,6 +8,7 @@ export default defineSchema({
     userId: v.optional(v.string()),
     fileId: v.id("_storage"),
     folderId: v.optional(v.id("folders")),
+    size: v.optional(v.number()),
     type: v.union(
       v.literal("image"),
       v.literal("pdf"),
@@ -25,6 +26,8 @@ export default defineSchema({
     orgId: v.string(),
     userId: v.optional(v.string()),
     isFavorite: v.optional(v.boolean()),
+    shouldDelete: v.optional(v.boolean()),
+    deletedAt: v.optional(v.number()),
   }).index("by_org", ["orgId"]),
   shareLinks: defineTable({
     fileId: v.id("files"),
@@ -33,7 +36,10 @@ export default defineSchema({
     createdBy: v.string(),
     createdAt: v.number(),
     expiresAt: v.number(),
-  }).index("by_token", ["token"]),
+    revokedAt: v.optional(v.number()),
+  })
+    .index("by_token", ["token"])
+    .index("by_org", ["orgId"]),
   activityLogs: defineTable({
     orgId: v.string(),
     userId: v.string(),
@@ -42,7 +48,8 @@ export default defineSchema({
       v.literal("renamed"),
       v.literal("trashed"),
       v.literal("restored"),
-      v.literal("shared")
+      v.literal("shared"),
+      v.literal("revoked_share")
     ),
     fileId: v.optional(v.id("files")),
     fileName: v.string(),
