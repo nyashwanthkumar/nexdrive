@@ -427,17 +427,6 @@ export default function DashboardPage() {
     setIsSelectionMode(false);
   }
 
-  function toggleSelectionMode() {
-    setIsSelectionMode((current) => {
-      if (current) {
-        setSelectedFileIds([]);
-        setSelectedFolderIds([]);
-      }
-
-      return !current;
-    });
-  }
-
   function handleFolderSurfaceClick(folder: (typeof visibleFolders)[number]) {
     if (isSelectionMode && canManageFolder(folder)) {
       toggleSelectedFolder(folder._id);
@@ -960,31 +949,37 @@ export default function DashboardPage() {
                   )}
                 </Button>
                 {selectableFiles.length + selectableFolders.length > 0 && (
-                  <>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className={`h-8 rounded-lg border-transparent px-2.5 text-xs shadow-none ${
-                        isSelectionMode
-                          ? "bg-zinc-900 text-white hover:bg-zinc-800 dark:bg-zinc-100 dark:text-zinc-950 dark:hover:bg-zinc-200"
-                          : "bg-transparent hover:bg-zinc-100 dark:hover:bg-zinc-800"
-                      }`}
-                      onClick={toggleSelectionMode}
-                    >
-                      <Check className="mr-1.5 h-3 w-3" />
-                      Select
-                    </Button>
-                    {isSelectionMode && selectableItemCount > 0 && (
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="h-8 rounded-lg border-transparent bg-transparent px-2.5 text-xs shadow-none hover:bg-zinc-100 dark:hover:bg-zinc-800"
+                  isSelectionMode ? (
+                    <div className="flex items-center gap-1.5 rounded-full border border-zinc-200/80 bg-zinc-50/95 px-1.5 py-1 shadow-inner shadow-white/70 dark:border-zinc-800 dark:bg-zinc-950/90 dark:shadow-none">
+                      <span className="flex h-8 items-center rounded-full bg-white px-3.5 text-xs font-medium text-zinc-700 shadow-sm dark:bg-zinc-900 dark:text-zinc-200">
+                        Selecting
+                      </span>
+                      <button
+                        type="button"
                         onClick={toggleSelectAllVisible}
+                        className="flex h-8 items-center rounded-full px-3.5 text-xs font-medium text-zinc-500 transition hover:bg-white hover:text-zinc-900 dark:text-zinc-400 dark:hover:bg-zinc-900 dark:hover:text-zinc-100"
                       >
                         {allVisibleSelected ? "Clear all" : "Select all"}
-                      </Button>
-                    )}
-                  </>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={clearSelection}
+                        className="flex h-8 w-8 items-center justify-center rounded-full text-zinc-400 transition hover:bg-white hover:text-zinc-900 dark:hover:bg-zinc-900 dark:hover:text-zinc-100"
+                        aria-label="Exit selection mode"
+                      >
+                        <X className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => setIsSelectionMode(true)}
+                      className="flex h-9 items-center gap-1.5 rounded-full border border-zinc-200/80 bg-zinc-50 px-3.5 text-xs font-medium text-zinc-600 shadow-sm shadow-zinc-200/40 transition hover:bg-white hover:text-zinc-900 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-300 dark:shadow-none dark:hover:bg-zinc-800 dark:hover:text-zinc-100"
+                    >
+                      <Check className="h-3.5 w-3.5" />
+                      Select
+                    </button>
+                  )
                 )}
                 <div className="hidden h-6 w-px bg-zinc-200 dark:bg-zinc-800 sm:block" />
                 <div className="flex h-9 items-center gap-2 rounded-xl bg-zinc-100 px-3 text-sm dark:bg-zinc-800">
@@ -999,6 +994,7 @@ export default function DashboardPage() {
                     aria-label="Sort files"
                     value={sortMode}
                     onChange={(event) => setSortMode(event.target.value as SortMode)}
+                    style={{ colorScheme: isDarkTheme ? "dark" : "light" }}
                     className="h-full cursor-pointer bg-transparent text-xs font-medium text-zinc-700 outline-none dark:text-zinc-200"
                   >
                     <option value="newest">Newest first</option>
@@ -1328,16 +1324,16 @@ export default function DashboardPage() {
                   >
                     <div className="flex min-w-0 flex-1 items-center gap-3">
                       <div
-                        className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full border transition ${
+                        className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full border transition ${
                           selectedFolderIds.includes(folder._id)
                             ? "border-zinc-900 bg-zinc-900 text-white dark:border-zinc-100 dark:bg-zinc-100 dark:text-zinc-950"
-                            : "border-zinc-200 bg-white text-transparent dark:border-zinc-700 dark:bg-zinc-900"
+                            : "border-zinc-300/90 bg-transparent text-transparent dark:border-zinc-600 dark:bg-transparent"
                         }`}
                       >
                         {selectedFolderIds.includes(folder._id) ? (
-                          <Check className="h-3.5 w-3.5" />
+                          <Check className="h-3 w-3" />
                         ) : (
-                          <span className="h-2 w-2 rounded-full bg-zinc-300 dark:bg-zinc-600" />
+                          <span className="h-1.5 w-1.5 rounded-full bg-zinc-300 dark:bg-zinc-600" />
                         )}
                       </div>
                       <div className="flex min-w-0 flex-1 items-center gap-3 text-left">
@@ -1427,16 +1423,16 @@ export default function DashboardPage() {
                   >
                     <div className="flex min-w-0 flex-1 items-center gap-3">
                       <div
-                        className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full border transition ${
+                        className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full border transition ${
                           selectedFileIds.includes(file._id)
                             ? "border-zinc-900 bg-zinc-900 text-white dark:border-zinc-100 dark:bg-zinc-100 dark:text-zinc-950"
-                            : "border-zinc-200 bg-white text-transparent dark:border-zinc-700 dark:bg-zinc-900"
+                            : "border-zinc-300/90 bg-transparent text-transparent dark:border-zinc-600 dark:bg-transparent"
                         }`}
                       >
                         {selectedFileIds.includes(file._id) ? (
-                          <Check className="h-3.5 w-3.5" />
+                          <Check className="h-3 w-3" />
                         ) : (
-                          <span className="h-2 w-2 rounded-full bg-zinc-300 dark:bg-zinc-600" />
+                          <span className="h-1.5 w-1.5 rounded-full bg-zinc-300 dark:bg-zinc-600" />
                         )}
                       </div>
                       <div className="flex min-w-0 flex-1 items-center gap-3 text-left">
