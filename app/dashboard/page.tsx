@@ -184,6 +184,7 @@ export default function DashboardPage() {
   const [isMobileNavOpen, setIsMobileNavOpen] = useState(false);
   const [selectedFileIds, setSelectedFileIds] = useState<Id<"files">[]>([]);
   const [selectedFolderIds, setSelectedFolderIds] = useState<Id<"folders">[]>([]);
+  const [isSelectionMode, setIsSelectionMode] = useState(false);
   const [isBulkWorking, setIsBulkWorking] = useState(false);
   const [isSharesDialogOpen, setIsSharesDialogOpen] = useState(false);
 
@@ -371,6 +372,11 @@ export default function DashboardPage() {
   const selectableFolders = visibleFolders.filter((folder) => activeView === "trash" || canManageFolder(folder));
   const selectedItemCount = selectedFiles.length + selectedFolders.length;
   const toolbarItemCount = displayedFiles.length + visibleFolders.length;
+  const selectableItemCount = selectableFiles.length + selectableFolders.length;
+  const allVisibleSelected =
+    selectableItemCount > 0 &&
+    selectableFiles.every((file) => selectedFileIds.includes(file._id)) &&
+    selectableFolders.every((folder) => selectedFolderIds.includes(folder._id));
 
   function formatBytes(size: number) {
     if (!size) return "0 MB";
@@ -418,6 +424,40 @@ export default function DashboardPage() {
   function clearSelection() {
     setSelectedFileIds([]);
     setSelectedFolderIds([]);
+    setIsSelectionMode(false);
+  }
+
+  function toggleSelectionMode() {
+    setIsSelectionMode((current) => {
+      if (current) {
+        setSelectedFileIds([]);
+        setSelectedFolderIds([]);
+      }
+
+      return !current;
+    });
+  }
+
+  function handleFolderSurfaceClick(folder: (typeof visibleFolders)[number]) {
+    if (isSelectionMode && canManageFolder(folder)) {
+      toggleSelectedFolder(folder._id);
+      return;
+    }
+
+    if (activeView !== "trash") {
+      setCurrentFolderId(folder._id);
+    }
+  }
+
+  function handleFileSurfaceClick(file: FileItem) {
+    if (isSelectionMode && canManageFile(file)) {
+      toggleSelectedFile(file._id);
+      return;
+    }
+
+    if (file.url) {
+      setPreviewFile(file);
+    }
   }
 
   function openRenameDialog(file: FileItem) {
@@ -920,15 +960,31 @@ export default function DashboardPage() {
                   )}
                 </Button>
                 {selectableFiles.length + selectableFolders.length > 0 && (
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="h-9 rounded-xl border-transparent bg-transparent px-3 shadow-none hover:bg-zinc-100 dark:hover:bg-zinc-800"
-                    onClick={toggleSelectAllVisible}
-                  >
-                    <Check className="mr-1.5 h-3.5 w-3.5" />
-                    Select
-                  </Button>
+                  <>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className={`h-8 rounded-lg border-transparent px-2.5 text-xs shadow-none ${
+                        isSelectionMode
+                          ? "bg-zinc-900 text-white hover:bg-zinc-800 dark:bg-zinc-100 dark:text-zinc-950 dark:hover:bg-zinc-200"
+                          : "bg-transparent hover:bg-zinc-100 dark:hover:bg-zinc-800"
+                      }`}
+                      onClick={toggleSelectionMode}
+                    >
+                      <Check className="mr-1.5 h-3 w-3" />
+                      Select
+                    </Button>
+                    {isSelectionMode && selectableItemCount > 0 && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-8 rounded-lg border-transparent bg-transparent px-2.5 text-xs shadow-none hover:bg-zinc-100 dark:hover:bg-zinc-800"
+                        onClick={toggleSelectAllVisible}
+                      >
+                        {allVisibleSelected ? "Clear all" : "Select all"}
+                      </Button>
+                    )}
+                  </>
                 )}
                 <div className="hidden h-6 w-px bg-zinc-200 dark:bg-zinc-800 sm:block" />
                 <div className="flex h-9 items-center gap-2 rounded-xl bg-zinc-100 px-3 text-sm dark:bg-zinc-800">
@@ -1010,34 +1066,40 @@ export default function DashboardPage() {
             )}
 
             {selectedItemCount > 0 && (
-              <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-zinc-200/80 bg-white px-4 py-3 shadow-sm shadow-zinc-200/40 dark:border-zinc-800 dark:bg-zinc-900 dark:shadow-none">
-                <span className="text-sm font-medium text-zinc-800 dark:text-zinc-100">
-                  {selectedItemCount} selected
-                </span>
-                <div className="flex flex-wrap gap-2">
-                  <Button variant="outline" size="sm" onClick={clearSelection}>
-                    Clear
-                  </Button>
+              <div className="flex flex-wrap items-center justify-between gap-3 rounded-[28px] border border-zinc-200/80 bg-zinc-100/80 px-3 py-2 shadow-sm shadow-zinc-200/40 backdrop-blur dark:border-zinc-800 dark:bg-zinc-900/85 dark:shadow-none">
+                <div className="flex items-center gap-2.5">
+                  <button
+                    type="button"
+                    onClick={clearSelection}
+                    className="flex h-9 w-9 items-center justify-center rounded-full text-zinc-500 transition hover:bg-white hover:text-zinc-900 dark:hover:bg-zinc-800 dark:hover:text-zinc-100"
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
+                  <span className="text-sm font-medium text-zinc-800 dark:text-zinc-100">
+                    {selectedItemCount} selected
+                  </span>
+                </div>
+                <div className="flex flex-wrap items-center gap-1.5">
                   {activeView === "trash" ? (
-                    <Button
-                      variant="outline"
-                      size="sm"
+                    <button
+                      type="button"
                       disabled={isBulkWorking}
                       onClick={bulkRestoreSelected}
+                      className="flex h-9 items-center gap-2 rounded-full px-3 text-sm text-zinc-600 transition hover:bg-white hover:text-zinc-950 disabled:opacity-50 dark:text-zinc-300 dark:hover:bg-zinc-800 dark:hover:text-zinc-100"
                     >
-                      <RotateCcw className="mr-1.5 h-3.5 w-3.5" />
+                      <RotateCcw className="h-4 w-4" />
                       Restore
-                    </Button>
+                    </button>
                   ) : null}
-                  <Button
-                    variant="destructive"
-                    size="sm"
+                  <button
+                    type="button"
                     disabled={isBulkWorking}
                     onClick={bulkDeleteSelected}
+                    className="flex h-9 items-center gap-2 rounded-full px-3 text-sm text-zinc-600 transition hover:bg-white hover:text-red-600 disabled:opacity-50 dark:text-zinc-300 dark:hover:bg-zinc-800 dark:hover:text-red-400"
                   >
-                    <Trash2 className="mr-1.5 h-3.5 w-3.5" />
+                    <Trash2 className="h-4 w-4" />
                     {activeView === "trash" ? "Delete forever" : "Move to trash"}
-                  </Button>
+                  </button>
                 </div>
               </div>
             )}
@@ -1163,31 +1225,28 @@ export default function DashboardPage() {
                 {visibleFolders.map((folder) => (
                   <div
                     key={folder._id}
-                    className="group flex h-20 items-center gap-3 rounded-2xl border border-zinc-200/80 bg-white px-4 text-left shadow-sm shadow-zinc-200/40 transition-all duration-150 hover:-translate-y-0.5 hover:border-zinc-300 hover:shadow-md dark:border-zinc-800 dark:bg-zinc-900 dark:shadow-none dark:hover:border-zinc-700"
+                    role="button"
+                    tabIndex={0}
+                    onClick={() => handleFolderSurfaceClick(folder)}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter" || event.key === " ") {
+                        event.preventDefault();
+                        handleFolderSurfaceClick(folder);
+                      }
+                    }}
+                    className={`group relative flex h-20 items-center gap-3 rounded-2xl border px-4 text-left shadow-sm transition-all duration-150 ${
+                      selectedFolderIds.includes(folder._id)
+                        ? "border-sky-200 bg-sky-50/80 shadow-sky-100/80 dark:border-sky-500/40 dark:bg-sky-500/10 dark:shadow-none"
+                        : "border-zinc-200/80 bg-white shadow-zinc-200/40 hover:-translate-y-0.5 hover:border-zinc-300 hover:shadow-md dark:border-zinc-800 dark:bg-zinc-900 dark:shadow-none dark:hover:border-zinc-700"
+                    }`}
                   >
-                    <button
-                      type="button"
-                      aria-label={selectedFolderIds.includes(folder._id) ? "Unselect folder" : "Select folder"}
-                      disabled={!canManageFolder(folder)}
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        toggleSelectedFolder(folder._id);
-                      }}
-                      className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border transition disabled:cursor-not-allowed disabled:opacity-40 ${
-                        selectedFolderIds.includes(folder._id)
-                          ? "border-zinc-900 bg-zinc-900 text-white dark:border-zinc-100 dark:bg-zinc-100 dark:text-zinc-950"
-                          : "border-zinc-200 bg-white text-zinc-400 hover:border-zinc-300 dark:border-zinc-700 dark:bg-zinc-900"
-                      }`}
-                    >
-                      {selectedFolderIds.includes(folder._id) && <Check className="h-4 w-4" />}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        if (activeView !== "trash") setCurrentFolderId(folder._id);
-                      }}
-                      className="flex min-w-0 flex-1 items-center gap-3 text-left"
-                    >
+                    {selectedFolderIds.includes(folder._id) && (
+                      <span className="absolute left-3 top-3 inline-flex h-6 items-center gap-1 rounded-full bg-zinc-900 px-2 text-[11px] font-medium text-white dark:bg-zinc-100 dark:text-zinc-950">
+                        <Check className="h-3 w-3" />
+                        Selected
+                      </span>
+                    )}
+                    <div className="flex min-w-0 flex-1 items-center gap-3 text-left">
                       <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-zinc-50 text-zinc-700 dark:bg-zinc-800 dark:text-zinc-200">
                         <FolderOpen className="h-5 w-5" />
                       </span>
@@ -1196,9 +1255,9 @@ export default function DashboardPage() {
                           {folder.name}
                         </span>
                       </span>
-                    </button>
+                    </div>
                     {activeView === "trash" ? (
-                      <div className="flex shrink-0 items-center gap-2">
+                      <div className="flex shrink-0 items-center gap-2" onClickCapture={(event) => event.stopPropagation()}>
                         <Button
                           variant="outline"
                           size="sm"
@@ -1220,25 +1279,27 @@ export default function DashboardPage() {
                         </Button>
                       </div>
                     ) : (
-                      <FolderActionsMenu
-                        isFavorite={folder.isFavorite ?? false}
-                        isOpen={folderMenuId === folder._id}
-                        isDeleting={deletingFolderId === folder._id}
-                        canManage={canManageFolder(folder)}
-                        onToggle={() =>
-                          setFolderMenuId((current) =>
-                            current === folder._id ? null : folder._id
-                          )
-                        }
-                        onDelete={() => {
-                          setFolderMenuId(null);
-                          setFolderPendingDelete({ id: folder._id, name: folder.name });
-                        }}
-                        onRename={() => openRenameFolderDialog(folder)}
-                        onToggleFavorite={() =>
-                          handleToggleFolderFavorite(folder._id, folder.isFavorite ?? false)
-                        }
-                      />
+                      <div onClickCapture={(event) => event.stopPropagation()}>
+                        <FolderActionsMenu
+                          isFavorite={folder.isFavorite ?? false}
+                          isOpen={folderMenuId === folder._id}
+                          isDeleting={deletingFolderId === folder._id}
+                          canManage={canManageFolder(folder)}
+                          onToggle={() =>
+                            setFolderMenuId((current) =>
+                              current === folder._id ? null : folder._id
+                            )
+                          }
+                          onDelete={() => {
+                            setFolderMenuId(null);
+                            setFolderPendingDelete({ id: folder._id, name: folder.name });
+                          }}
+                          onRename={() => openRenameFolderDialog(folder)}
+                          onToggleFavorite={() =>
+                            handleToggleFolderFavorite(folder._id, folder.isFavorite ?? false)
+                          }
+                        />
+                      </div>
                     )}
                   </div>
                 ))}
@@ -1250,32 +1311,36 @@ export default function DashboardPage() {
                 {visibleFolders.map((folder) => (
                   <div
                     key={folder._id}
-                    className="flex flex-col gap-3 border-b border-zinc-100 px-5 py-4 transition-colors last:border-b-0 hover:bg-zinc-50/70 dark:border-zinc-800 dark:hover:bg-zinc-800/70 sm:flex-row sm:items-center sm:justify-between"
+                    role="button"
+                    tabIndex={0}
+                    className={`flex flex-col gap-3 border-b border-zinc-100 px-5 py-4 transition-colors last:border-b-0 dark:border-zinc-800 sm:flex-row sm:items-center sm:justify-between ${
+                      selectedFolderIds.includes(folder._id)
+                        ? "bg-sky-50/80 dark:bg-sky-500/10"
+                        : "hover:bg-zinc-50/70 dark:hover:bg-zinc-800/70"
+                    }`}
+                    onClick={() => handleFolderSurfaceClick(folder)}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter" || event.key === " ") {
+                        event.preventDefault();
+                        handleFolderSurfaceClick(folder);
+                      }
+                    }}
                   >
                     <div className="flex min-w-0 flex-1 items-center gap-3">
-                      <button
-                        type="button"
-                        aria-label={selectedFolderIds.includes(folder._id) ? "Unselect folder" : "Select folder"}
-                        disabled={!canManageFolder(folder)}
-                        onClick={(event) => {
-                          event.stopPropagation();
-                          toggleSelectedFolder(folder._id);
-                        }}
-                        className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border transition disabled:cursor-not-allowed disabled:opacity-40 ${
+                      <div
+                        className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full border transition ${
                           selectedFolderIds.includes(folder._id)
                             ? "border-zinc-900 bg-zinc-900 text-white dark:border-zinc-100 dark:bg-zinc-100 dark:text-zinc-950"
-                            : "border-zinc-200 bg-white text-zinc-400 hover:border-zinc-300 dark:border-zinc-700 dark:bg-zinc-900"
+                            : "border-zinc-200 bg-white text-transparent dark:border-zinc-700 dark:bg-zinc-900"
                         }`}
                       >
-                        {selectedFolderIds.includes(folder._id) && <Check className="h-4 w-4" />}
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          if (activeView !== "trash") setCurrentFolderId(folder._id);
-                        }}
-                        className="flex min-w-0 flex-1 items-center gap-3 text-left"
-                      >
+                        {selectedFolderIds.includes(folder._id) ? (
+                          <Check className="h-3.5 w-3.5" />
+                        ) : (
+                          <span className="h-2 w-2 rounded-full bg-zinc-300 dark:bg-zinc-600" />
+                        )}
+                      </div>
+                      <div className="flex min-w-0 flex-1 items-center gap-3 text-left">
                         <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-zinc-100 bg-zinc-50 text-zinc-700 dark:border-zinc-800 dark:bg-zinc-800 dark:text-zinc-200">
                           <FolderOpen className="h-5 w-5" />
                         </span>
@@ -1283,12 +1348,14 @@ export default function DashboardPage() {
                           <p className="truncate text-sm font-semibold text-zinc-900 dark:text-zinc-50">
                             {folder.name}
                           </p>
-                          <p className="text-xs text-zinc-400 dark:text-zinc-500">Folder</p>
+                          <p className="text-xs text-zinc-400 dark:text-zinc-500">
+                            {isSelectionMode ? "Select folder" : "Open folder"}
+                          </p>
                         </div>
-                      </button>
+                      </div>
                     </div>
                     {activeView === "trash" ? (
-                      <div className="flex shrink-0 items-center gap-2">
+                      <div className="flex shrink-0 items-center gap-2" onClickCapture={(event) => event.stopPropagation()}>
                         <Button
                           variant="outline"
                           size="sm"
@@ -1310,25 +1377,27 @@ export default function DashboardPage() {
                         </Button>
                       </div>
                     ) : (
-                      <FolderActionsMenu
-                        isFavorite={folder.isFavorite ?? false}
-                        isOpen={folderMenuId === folder._id}
-                        isDeleting={deletingFolderId === folder._id}
-                        canManage={canManageFolder(folder)}
-                        onToggle={() =>
-                          setFolderMenuId((current) =>
-                            current === folder._id ? null : folder._id
-                          )
-                        }
-                        onDelete={() => {
-                          setFolderMenuId(null);
-                          setFolderPendingDelete({ id: folder._id, name: folder.name });
-                        }}
-                        onRename={() => openRenameFolderDialog(folder)}
-                        onToggleFavorite={() =>
-                          handleToggleFolderFavorite(folder._id, folder.isFavorite ?? false)
-                        }
-                      />
+                      <div onClickCapture={(event) => event.stopPropagation()}>
+                        <FolderActionsMenu
+                          isFavorite={folder.isFavorite ?? false}
+                          isOpen={folderMenuId === folder._id}
+                          isDeleting={deletingFolderId === folder._id}
+                          canManage={canManageFolder(folder)}
+                          onToggle={() =>
+                            setFolderMenuId((current) =>
+                              current === folder._id ? null : folder._id
+                            )
+                          }
+                          onDelete={() => {
+                            setFolderMenuId(null);
+                            setFolderPendingDelete({ id: folder._id, name: folder.name });
+                          }}
+                          onRename={() => openRenameFolderDialog(folder)}
+                          onToggleFavorite={() =>
+                            handleToggleFolderFavorite(folder._id, folder.isFavorite ?? false)
+                          }
+                        />
+                      </div>
                     )}
                   </div>
                 ))}
@@ -1341,28 +1410,36 @@ export default function DashboardPage() {
                 {displayedFiles.map((file) => (
                   <div
                     key={file._id}
-                    className="flex flex-col gap-3 border-b border-zinc-100 px-5 py-4 transition-colors last:border-b-0 hover:bg-zinc-50/70 dark:border-zinc-800 dark:hover:bg-zinc-800/70 lg:flex-row lg:items-center lg:justify-between"
+                    role="button"
+                    tabIndex={0}
+                    className={`flex flex-col gap-3 border-b border-zinc-100 px-5 py-4 transition-colors last:border-b-0 dark:border-zinc-800 lg:flex-row lg:items-center lg:justify-between ${
+                      selectedFileIds.includes(file._id)
+                        ? "bg-sky-50/80 dark:bg-sky-500/10"
+                        : "hover:bg-zinc-50/70 dark:hover:bg-zinc-800/70"
+                    }`}
+                    onClick={() => handleFileSurfaceClick(file)}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter" || event.key === " ") {
+                        event.preventDefault();
+                        handleFileSurfaceClick(file);
+                      }
+                    }}
                   >
                     <div className="flex min-w-0 flex-1 items-center gap-3">
-                      <button
-                        type="button"
-                        aria-label={selectedFileIds.includes(file._id) ? "Unselect file" : "Select file"}
-                        disabled={!canManageFile(file)}
-                        onClick={() => toggleSelectedFile(file._id)}
-                        className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border transition disabled:cursor-not-allowed disabled:opacity-40 ${
+                      <div
+                        className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full border transition ${
                           selectedFileIds.includes(file._id)
                             ? "border-zinc-900 bg-zinc-900 text-white dark:border-zinc-100 dark:bg-zinc-100 dark:text-zinc-950"
-                            : "border-zinc-200 bg-white text-zinc-400 hover:border-zinc-300 dark:border-zinc-700 dark:bg-zinc-900"
+                            : "border-zinc-200 bg-white text-transparent dark:border-zinc-700 dark:bg-zinc-900"
                         }`}
                       >
-                        {selectedFileIds.includes(file._id) && <Check className="h-4 w-4" />}
-                      </button>
-                      <button
-                        type="button"
-                        disabled={!file.url}
-                        onClick={() => file.url && setPreviewFile(file)}
-                        className="flex min-w-0 flex-1 items-center gap-3 text-left disabled:cursor-default"
-                      >
+                        {selectedFileIds.includes(file._id) ? (
+                          <Check className="h-3.5 w-3.5" />
+                        ) : (
+                          <span className="h-2 w-2 rounded-full bg-zinc-300 dark:bg-zinc-600" />
+                        )}
+                      </div>
+                      <div className="flex min-w-0 flex-1 items-center gap-3 text-left">
                         <div className="flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-zinc-100 bg-zinc-50 dark:border-zinc-800 dark:bg-zinc-800">
                           {file.type === "image" && file.url ? (
                             <Image
@@ -1387,60 +1464,51 @@ export default function DashboardPage() {
                             {typeof file.size === "number" && <span>{formatBytes(file.size)}</span>}
                           </div>
                         </div>
-                      </button>
+                      </div>
                     </div>
 
-                    <div className="flex shrink-0 flex-wrap items-center gap-2 lg:justify-end">
+                    <div className="flex shrink-0 flex-wrap items-center gap-2 lg:justify-end" onClickCapture={(event) => event.stopPropagation()}>
                       {activeView !== "trash" ? (
-                        <>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            className="h-8 rounded-lg text-xs"
-                            disabled={!file.url}
-                            onClick={() => file.url && setPreviewFile(file)}
-                          >
-                            <Eye className="mr-1.5 h-3.5 w-3.5" />
-                            Preview
-                          </Button>
+                        <div className="flex items-center gap-1 rounded-2xl border border-zinc-200/80 bg-zinc-50/90 p-1 dark:border-zinc-800 dark:bg-zinc-950/80">
                           <Button
                             asChild
                             variant="ghost"
                             size="sm"
-                            className="h-8 rounded-lg px-3 text-zinc-400 hover:bg-zinc-100 hover:text-zinc-700"
+                            className="h-8 rounded-xl px-2.5 text-zinc-400 hover:bg-white hover:text-zinc-700 dark:hover:bg-zinc-900"
                             disabled={!file.url}
                           >
-                            <a href={file.url ?? "#"} download={file.name} target="_blank" rel="noreferrer">
+                            <a href={file.url ?? "#"} download={file.name} target="_blank" rel="noreferrer" title="Download">
                               <Download className="h-3.5 w-3.5" />
                             </a>
                           </Button>
                           <Button
-                            variant="outline"
+                            variant="ghost"
                             size="sm"
-                            className="h-8 rounded-lg px-3 text-xs"
+                            className="h-8 rounded-xl px-2.5 text-zinc-500 hover:bg-white hover:text-zinc-900 dark:hover:bg-zinc-900 dark:hover:text-zinc-100"
                             disabled={!file.url}
                             onClick={() => {
                               setSharingFile(file);
                               setShareDuration("24");
                               setShareUrl("");
                             }}
+                            title="Share"
                           >
-                            <Link2 className="mr-1.5 h-3.5 w-3.5" />
-                            Share
+                            <Link2 className="h-3.5 w-3.5" />
                           </Button>
                           <Button
                             variant="ghost"
                             size="sm"
-                            className="h-8 rounded-lg px-3 text-zinc-400 hover:bg-zinc-100 hover:text-zinc-700"
+                            className="h-8 rounded-xl px-2.5 text-zinc-400 hover:bg-white hover:text-zinc-700 dark:hover:bg-zinc-900"
                             disabled={!canManageFile(file)}
                             onClick={() => openRenameDialog(file)}
+                            title="Rename"
                           >
                             <Pencil className="h-3.5 w-3.5" />
                           </Button>
                           <Button
                             variant="ghost"
                             size="sm"
-                            className="h-8 rounded-lg px-3 text-zinc-400 hover:bg-red-50 hover:text-red-500"
+                            className="h-8 rounded-xl px-2.5 text-zinc-400 hover:bg-red-50 hover:text-red-500 dark:hover:bg-red-500/10"
                             disabled={!canManageFile(file)}
                             onClick={async () => {
                               try {
@@ -1450,10 +1518,11 @@ export default function DashboardPage() {
                                 toast.error(error instanceof Error ? error.message : "Failed to move to trash");
                               }
                             }}
+                            title="Move to trash"
                           >
                             <Trash2 className="h-3.5 w-3.5" />
                           </Button>
-                        </>
+                        </div>
                       ) : (
                         <>
                           <Button
@@ -1503,16 +1572,34 @@ export default function DashboardPage() {
                 {displayedFiles.map((file) => (
                   <div
                     key={file._id}
-                    className="group flex flex-col overflow-hidden rounded-2xl border border-zinc-200/80 bg-white shadow-sm shadow-zinc-200/40 transition-all duration-150 hover:-translate-y-0.5 hover:border-zinc-300 hover:shadow-md hover:shadow-zinc-200/70 dark:border-zinc-800 dark:bg-zinc-900 dark:shadow-none dark:hover:border-zinc-700"
+                    role="button"
+                    tabIndex={0}
+                    onClick={() => handleFileSurfaceClick(file)}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter" || event.key === " ") {
+                        event.preventDefault();
+                        handleFileSurfaceClick(file);
+                      }
+                    }}
+                    className={`group relative flex flex-col overflow-hidden rounded-2xl border transition-all duration-150 ${
+                      selectedFileIds.includes(file._id)
+                        ? "border-sky-200 bg-sky-50/80 shadow-md shadow-sky-100/70 dark:border-sky-500/40 dark:bg-sky-500/10 dark:shadow-none"
+                        : "border-zinc-200/80 bg-white shadow-sm shadow-zinc-200/40 hover:-translate-y-0.5 hover:border-zinc-300 hover:shadow-md hover:shadow-zinc-200/70 dark:border-zinc-800 dark:bg-zinc-900 dark:shadow-none dark:hover:border-zinc-700"
+                    }`}
                   >
+                    {selectedFileIds.includes(file._id) && (
+                      <span className="absolute left-3 top-3 z-20 inline-flex h-6 items-center gap-1 rounded-full bg-zinc-900 px-2 text-[11px] font-medium text-white dark:bg-zinc-100 dark:text-zinc-950">
+                        <Check className="h-3 w-3" />
+                        Selected
+                      </span>
+                    )}
                     {/* Thumbnail */}
                     <div
-                      className="relative h-28 w-full cursor-pointer overflow-hidden bg-zinc-100 dark:bg-zinc-800"
-                      onClick={() => file.url && setPreviewFile(file)}
+                      className="relative h-28 w-full overflow-hidden bg-zinc-100 dark:bg-zinc-800"
                     >
                       <FileCardThumbnail file={file} />
 
-                      {file.url && (
+                      {file.url && !isSelectionMode && (
                         <div className="absolute inset-0 flex items-center justify-center bg-zinc-950/0 opacity-0 transition-all duration-150 group-hover:bg-zinc-950/35 group-hover:opacity-100">
                           <span className="flex items-center gap-1.5 rounded-full bg-white px-3 py-1.5 text-xs font-medium text-zinc-900 shadow-sm">
                             <Eye className="h-3.5 w-3.5" />
@@ -1520,23 +1607,6 @@ export default function DashboardPage() {
                           </span>
                         </div>
                       )}
-
-                      <button
-                        type="button"
-                        aria-label={selectedFileIds.includes(file._id) ? "Unselect file" : "Select file"}
-                        disabled={!canManageFile(file)}
-                        onClick={(event) => {
-                          event.stopPropagation();
-                          toggleSelectedFile(file._id);
-                        }}
-                        className={`absolute left-2 top-2 z-10 flex h-7 w-7 items-center justify-center rounded-full border shadow-sm transition disabled:cursor-not-allowed disabled:opacity-40 ${
-                          selectedFileIds.includes(file._id)
-                            ? "border-zinc-900 bg-zinc-900 text-white opacity-100 dark:border-zinc-100 dark:bg-zinc-100 dark:text-zinc-950"
-                            : "border-zinc-200 bg-white text-zinc-400 opacity-0 group-hover:opacity-100 dark:border-zinc-700 dark:bg-zinc-900"
-                        }`}
-                      >
-                        {selectedFileIds.includes(file._id) && <Check className="h-3.5 w-3.5" />}
-                      </button>
 
                       {/* Favourite star */}
                       {activeView !== "trash" && (
@@ -1567,50 +1637,59 @@ export default function DashboardPage() {
                     </div>
 
                     {/* Info + actions */}
-                    <div className="flex flex-1 flex-col gap-2 px-3 py-3">
+                    <div className="flex flex-1 flex-col gap-3 px-3 py-3">
                       <div className="flex items-start justify-between gap-2">
-                        <p className="line-clamp-1 text-[15px] font-semibold text-zinc-900 dark:text-zinc-50">
-                          {file.name}
-                        </p>
-                        <span className="shrink-0 rounded bg-zinc-100 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-zinc-500 dark:bg-zinc-800 dark:text-zinc-400">
-                          {file.type}
+                        <div className="min-w-0">
+                          <p className="line-clamp-1 text-[15px] font-semibold text-zinc-900 dark:text-zinc-50">
+                            {file.name}
+                          </p>
+                          <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-zinc-400 dark:text-zinc-500">
+                            <span className="rounded-full bg-zinc-100 px-2 py-0.5 font-medium uppercase tracking-wide dark:bg-zinc-800">
+                              {file.type}
+                            </span>
+                            {typeof file.size === "number" && <span>{formatBytes(file.size)}</span>}
+                          </div>
+                        </div>
+                        <span className="shrink-0 text-[11px] font-medium text-zinc-400 dark:text-zinc-500">
+                          {isSelectionMode ? "Select" : "Open"}
                         </span>
                       </div>
 
-                      <div className="flex flex-wrap gap-2">
+                      <div className="flex items-center justify-between gap-2" onClickCapture={(event) => event.stopPropagation()}>
                         {activeView !== "trash" ? (
-                          <>
+                          <div className="flex items-center gap-1 rounded-2xl border border-zinc-200/80 bg-zinc-50/90 p-1 dark:border-zinc-800 dark:bg-zinc-950/80">
                             <Button
-                              variant="outline"
+                              variant="ghost"
                               size="sm"
-                              className="h-8 flex-1 rounded-lg px-2.5 text-xs"
+                              className="h-8 rounded-xl px-2.5 text-zinc-500 hover:bg-white hover:text-zinc-900 dark:hover:bg-zinc-900 dark:hover:text-zinc-100"
                               disabled={!file.url}
                               onClick={() => {
                                 setSharingFile(file);
                                 setShareDuration("24");
                                 setShareUrl("");
                               }}
+                              title="Share"
                             >
-                              <Link2 className="mr-1 h-3.5 w-3.5" />
-                              Share
+                              <Link2 className="h-3.5 w-3.5" />
                             </Button>
                             <Button
                               asChild
                               variant="ghost"
                               size="sm"
-                              className="h-8 flex-1 rounded-lg px-2 text-zinc-400 hover:bg-zinc-100 hover:text-zinc-700"
+                              className="h-8 rounded-xl px-2 text-zinc-400 hover:bg-white hover:text-zinc-700 dark:hover:bg-zinc-900"
                               disabled={!file.url}
                             >
-                              <a href={file.url ?? "#"} download={file.name} target="_blank" rel="noreferrer">
+                              <a href={file.url ?? "#"} download={file.name} target="_blank" rel="noreferrer" title="Download">
                                 <Download className="h-3.5 w-3.5" />
                               </a>
                             </Button>
                             <Button
                               variant="ghost"
                               size="sm"
-                              className="h-8 flex-1 rounded-lg px-2 text-zinc-400 hover:bg-zinc-100 hover:text-zinc-700"
+                              className="h-8 rounded-xl px-2 text-zinc-400 hover:bg-white hover:text-zinc-700 dark:hover:bg-zinc-900"
                               disabled={!canManageFile(file)}
                               onClick={() => openRenameDialog(file)}
+                              title="Rename"
                             >
                               <Pencil className="h-3.5 w-3.5" />
                             </Button>
@@ -1618,7 +1697,7 @@ export default function DashboardPage() {
                             <Button
                               variant="ghost"
                               size="sm"
-                              className="h-8 flex-1 rounded-lg px-2 text-zinc-400 hover:bg-red-50 hover:text-red-500"
+                              className="h-8 rounded-xl px-2 text-zinc-400 hover:bg-red-50 hover:text-red-500 dark:hover:bg-red-500/10"
                               disabled={!canManageFile(file)}
                               onClick={async () => {
                                 try {
@@ -1628,10 +1707,11 @@ export default function DashboardPage() {
                                   toast.error(error instanceof Error ? error.message : "Failed to move to trash");
                                 }
                               }}
+                              title="Move to trash"
                             >
                               <Trash2 className="h-3.5 w-3.5" />
                             </Button>
-                          </>
+                          </div>
                         ) : (
                           <>
                             <Button
