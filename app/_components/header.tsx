@@ -11,7 +11,7 @@ import {
 } from "@clerk/nextjs";
 import { usePathname, useRouter } from "next/navigation";
 import { useTheme } from "./theme-provider";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import {
   Bot,
@@ -112,13 +112,27 @@ function AccountMenu() {
   const avatarUrl = user?.imageUrl;
   const email = user?.primaryEmailAddress?.emailAddress ?? "";
   const name = user?.fullName ?? user?.username ?? "NexDrive user";
-  const memberships = userMemberships.data ?? [];
+  const memberships = useMemo(() => userMemberships.data ?? [], [userMemberships.data]);
+
+  useEffect(() => {
+    if (!isLoaded || !setActive || !organization) return;
+
+    const stillHasAccess = memberships.some(
+      (membership) => membership.organization.id === organization.id
+    );
+
+    if (!stillHasAccess) {
+      void setActive({ organization: null }).then(() => {
+        router.replace("/dashboard");
+      });
+    }
+  }, [isLoaded, memberships, organization, router, setActive]);
 
   async function selectOrganization(organizationId: string | null) {
     if (!isLoaded || !setActive) return;
     await setActive({ organization: organizationId });
     setIsOpen(false);
-    router.push("/dashboard");
+    window.location.assign("/dashboard");
   }
 
   function openCreateOrganization() {
