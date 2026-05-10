@@ -122,23 +122,6 @@ function AccountMenu() {
     window.location.assign(url);
   }
 
-  useEffect(() => {
-    if (!isLoaded || !setActive || !organization) return;
-
-    const stillHasAccess = memberships.some(
-      (membership) => membership.organization.id === organization.id
-    );
-
-    if (!stillHasAccess) {
-      void setActive({
-        organization: null,
-        navigate: async ({ decorateUrl }) => {
-          goToDashboard(decorateUrl("/dashboard"));
-        },
-      });
-    }
-  }, [isLoaded, memberships, organization, setActive]);
-
   async function selectOrganization(organizationId: string | null) {
     if (!isLoaded || !setActive || isSwitchingWorkspace) return;
 
@@ -160,12 +143,7 @@ function AccountMenu() {
     } catch (error) {
       console.error("Failed to switch organization", error);
       setIsOpen(false);
-      await setActive({
-        organization: null,
-        navigate: async ({ decorateUrl }) => {
-          goToDashboard(decorateUrl("/dashboard"));
-        },
-      });
+      setIsSwitchingWorkspace(false);
     } finally {
       setIsSwitchingWorkspace(false);
     }
