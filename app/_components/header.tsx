@@ -9,7 +9,7 @@ import {
   useOrganizationList,
   useUser,
 } from "@clerk/nextjs";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname } from "next/navigation";
 import { useTheme } from "./theme-provider";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
@@ -79,7 +79,6 @@ function ThemeToggle() {
 }
 
 function AccountMenu() {
-  const router = useRouter();
   const clerk = useClerk();
   const { user } = useUser();
   const { organization } = useOrganization();
@@ -114,6 +113,15 @@ function AccountMenu() {
   const name = user?.fullName ?? user?.username ?? "NexDrive user";
   const memberships = useMemo(() => userMemberships.data ?? [], [userMemberships.data]);
 
+  function goToDashboard(url: string) {
+    if (url.startsWith("https://") || url.startsWith("http://")) {
+      window.location.href = url;
+      return;
+    }
+
+    window.location.assign(url);
+  }
+
   useEffect(() => {
     if (!isLoaded || !setActive || !organization) return;
 
@@ -122,11 +130,14 @@ function AccountMenu() {
     );
 
     if (!stillHasAccess) {
-      void setActive({ organization: null }).then(() => {
-        router.replace("/dashboard");
+      void setActive({
+        organization: null,
+        navigate: async ({ decorateUrl }) => {
+          goToDashboard(decorateUrl("/dashboard"));
+        },
       });
     }
-  }, [isLoaded, memberships, organization, router, setActive]);
+  }, [isLoaded, memberships, organization, setActive]);
 
   async function selectOrganization(organizationId: string | null) {
     if (!isLoaded || !setActive || isSwitchingWorkspace) return;
@@ -141,13 +152,20 @@ function AccountMenu() {
       setIsSwitchingWorkspace(true);
       await setActive({
         organization: organizationId,
-        redirectUrl: "/dashboard",
+        navigate: async ({ decorateUrl }) => {
+          goToDashboard(decorateUrl("/dashboard"));
+        },
       });
       setIsOpen(false);
     } catch (error) {
       console.error("Failed to switch organization", error);
       setIsOpen(false);
-      await setActive({ organization: null, redirectUrl: "/dashboard" });
+      await setActive({
+        organization: null,
+        navigate: async ({ decorateUrl }) => {
+          goToDashboard(decorateUrl("/dashboard"));
+        },
+      });
     } finally {
       setIsSwitchingWorkspace(false);
     }
