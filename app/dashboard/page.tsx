@@ -89,6 +89,16 @@ function getFileExtension(name: string) {
   return extension && extension.length <= 8 ? extension : null;
 }
 
+function FileTypeIcon({ type }: { type: string }) {
+  if (type === "image") return <ImageIcon className="h-7 w-7 text-sky-500" />;
+  if (type === "pdf") return <FileText className="h-7 w-7 text-red-500" />;
+  if (type === "spreadsheet") return <FileSpreadsheet className="h-7 w-7 text-emerald-500" />;
+  if (type === "document") return <FileText className="h-7 w-7 text-indigo-500" />;
+  if (type === "audio") return <Music className="h-7 w-7 text-fuchsia-500" />;
+  if (type === "video") return <Video className="h-7 w-7 text-orange-500" />;
+  return <FolderOpen className="h-7 w-7 text-zinc-400" />;
+}
+
 function FileCardThumbnail({
   file,
 }: {
@@ -328,16 +338,6 @@ export default function DashboardPage() {
       current.filter((fileId) => displayedFiles.some((file) => file._id === fileId))
     );
   }, [displayedFiles]);
-
-  function FileTypeIcon({ type }: { type: string }) {
-    if (type === "image") return <ImageIcon className="h-7 w-7 text-sky-500" />;
-    if (type === "pdf") return <FileText className="h-7 w-7 text-red-500" />;
-    if (type === "spreadsheet") return <FileSpreadsheet className="h-7 w-7 text-emerald-500" />;
-    if (type === "document") return <FileText className="h-7 w-7 text-indigo-500" />;
-    if (type === "audio") return <Music className="h-7 w-7 text-fuchsia-500" />;
-    if (type === "video") return <Video className="h-7 w-7 text-orange-500" />;
-    return <FolderOpen className="h-7 w-7 text-zinc-400" />;
-  }
 
   const viewMeta = {
     recent: { label: "Recent", description: "Latest files in this workspace" },
