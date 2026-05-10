@@ -633,7 +633,7 @@ export default function DashboardPage() {
         <div className="grid min-h-[calc(100vh-64px)] grid-cols-1 lg:grid-cols-[220px_minmax(0,1fr)]">
 
             {/* Sidebar */}
-          <aside className="relative flex flex-col gap-3 border-b border-zinc-200/80 bg-white px-3 py-3 dark:border-zinc-800 dark:bg-zinc-950 lg:border-b-0 lg:border-r lg:py-5">
+          <aside className="relative flex flex-col gap-3 border-b border-zinc-200/80 bg-white px-3 py-3 dark:border-zinc-800 dark:bg-zinc-950 lg:h-[calc(100vh-64px)] lg:border-b-0 lg:border-r lg:py-5">
             <div className="flex items-center gap-2 px-1 lg:mb-2">
               <button
                 type="button"
@@ -649,7 +649,7 @@ export default function DashboardPage() {
 
             <nav
               onClick={() => setIsMobileNavOpen(false)}
-              className={`absolute left-3 right-3 top-[72px] z-30 rounded-2xl border border-zinc-200 bg-white p-2 shadow-xl shadow-zinc-200/70 dark:border-zinc-800 dark:bg-zinc-950 dark:shadow-black/20 lg:static lg:block lg:rounded-none lg:border-0 lg:bg-transparent lg:p-0 lg:shadow-none ${
+              className={`absolute left-3 right-3 top-[72px] z-30 rounded-2xl border border-zinc-200 bg-white p-2 shadow-xl shadow-zinc-200/70 dark:border-zinc-800 dark:bg-zinc-950 dark:shadow-black/20 lg:static lg:block lg:flex-1 lg:overflow-y-auto lg:rounded-none lg:border-0 lg:bg-transparent lg:p-0 lg:shadow-none ${
                 isMobileNavOpen ? "grid gap-1" : "hidden"
               } lg:space-y-0.5`}
             >
@@ -669,28 +669,29 @@ export default function DashboardPage() {
                   {isDarkTheme ? "On" : "Off"}
                 </span>
               </button>
-              {storageStats && (
-                <div className="mb-1 rounded-lg border border-zinc-200 bg-zinc-50 px-3 py-2.5 dark:border-zinc-800 dark:bg-zinc-900 lg:hidden">
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="flex items-center gap-2 text-sm font-medium text-zinc-700 dark:text-zinc-200">
-                      <Files className="h-4 w-4" />
-                      Storage
-                    </span>
-                    <span className="text-xs text-zinc-400">
-                      {storagePercent}%
-                    </span>
-                  </div>
-                  <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-zinc-200 dark:bg-zinc-800">
-                    <div
-                      className="h-full rounded-full bg-zinc-900 dark:bg-zinc-100"
-                      style={{ width: `${storagePercent}%` }}
-                    />
-                  </div>
-                  <p className="mt-2 text-xs text-zinc-500 dark:text-zinc-400">
-                    {formatBytes(storageTotal)} of {formatBytes(storageLimit)} • {storageStats.fileCount} files
-                  </p>
+              <div className="mb-1 rounded-lg border border-zinc-200 bg-zinc-50 px-3 py-2.5 dark:border-zinc-800 dark:bg-zinc-900 lg:hidden">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="flex items-center gap-2 text-sm font-medium text-zinc-700 dark:text-zinc-200">
+                    <Files className="h-4 w-4" />
+                    Storage
+                  </span>
+                  <span className="text-xs text-zinc-400">
+                    {storagePercent}%
+                  </span>
                 </div>
-              )}
+                <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-zinc-200 dark:bg-zinc-800">
+                  <div
+                    className="h-full rounded-full bg-zinc-900 dark:bg-zinc-100"
+                    style={{ width: `${storagePercent}%` }}
+                  />
+                </div>
+                <p className="mt-2 text-xs text-zinc-500 dark:text-zinc-400">
+                  {formatBytes(storageTotal)} / {formatBytes(storageLimit)} • {storageStats?.fileCount ?? 0} files
+                </p>
+                <p className="mt-1 text-xs text-zinc-400 dark:text-zinc-500">
+                  {activeShares.length} active shares
+                </p>
+              </div>
               <SidebarItem
                 active={activeView === "recent"}
                 icon={<Clock className="h-4 w-4" />}
@@ -784,52 +785,57 @@ export default function DashboardPage() {
               />
             </nav>
 
-            {storageStats && (
-              <div className="hidden border-t border-zinc-100 pt-4 dark:border-zinc-800 lg:block">
-                <p className="mb-2 px-3 text-[10px] font-semibold uppercase tracking-widest text-zinc-400 dark:text-zinc-500">
-                  Storage
-                </p>
-                <div className="rounded-xl border border-zinc-100 bg-zinc-50/80 px-3 py-3 dark:border-zinc-800 dark:bg-zinc-900">
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="text-xs font-medium text-zinc-600 dark:text-zinc-300">
-                      {formatBytes(storageTotal)}
-                    </span>
-                    <span className="text-[11px] text-zinc-400">
-                      {storagePercent}%
-                    </span>
-                  </div>
-                  <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-zinc-200 dark:bg-zinc-800">
-                    <div
-                      className="h-full rounded-full bg-zinc-900 dark:bg-zinc-100"
-                      style={{ width: `${storagePercent}%` }}
-                    />
-                  </div>
-                  <div className="mt-2 flex justify-between text-[11px] text-zinc-400 dark:text-zinc-500">
-                    <span>{formatBytes(storageLimit)} total</span>
-                    <span>{storageStats.fileCount} files</span>
-                  </div>
-                  <div className="mt-1 text-[11px] text-zinc-400 dark:text-zinc-500">
-                    {activeShares.length} active shares
-                  </div>
+            <div className="hidden border-t border-zinc-100 pt-4 dark:border-zinc-800 lg:block">
+              <p className="mb-2 px-3 text-[10px] font-semibold uppercase tracking-widest text-zinc-400 dark:text-zinc-500">
+                Storage
+              </p>
+              <div className="rounded-2xl border border-zinc-100 bg-zinc-50/80 px-3 py-3 dark:border-zinc-800 dark:bg-zinc-900">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-sm font-semibold text-zinc-700 dark:text-zinc-200">
+                    {formatBytes(storageTotal)}
+                  </span>
+                  <span className="rounded-full bg-white px-2 py-0.5 text-[11px] font-medium text-zinc-500 dark:bg-zinc-800 dark:text-zinc-400">
+                    {storagePercent}%
+                  </span>
+                </div>
+                <div className="mt-3 h-2 overflow-hidden rounded-full bg-zinc-200 dark:bg-zinc-800">
+                  <div
+                    className="h-full rounded-full bg-zinc-900 dark:bg-zinc-100"
+                    style={{ width: `${storagePercent}%` }}
+                  />
+                </div>
+                <div className="mt-3 flex items-center justify-between text-[11px] text-zinc-500 dark:text-zinc-400">
+                  <span>{formatBytes(storageLimit)} total</span>
+                  <span>{storageStats?.fileCount ?? 0} files</span>
+                </div>
+                <div className="mt-1 text-[11px] text-zinc-400 dark:text-zinc-500">
+                  {activeShares.length} active shares
                 </div>
               </div>
-            )}
+            </div>
 
-            <div className="mt-auto hidden border-t border-zinc-100 pt-4 dark:border-zinc-800 lg:block">
+            <div className="hidden border-t border-zinc-100 pt-4 dark:border-zinc-800 lg:block">
               <p className="mb-2 px-3 text-[10px] font-semibold uppercase tracking-widest text-zinc-400 dark:text-zinc-500">
                 Workspace
               </p>
-              <div className="flex items-center gap-2.5 rounded-xl border border-zinc-100 bg-zinc-50/80 px-3 py-2 dark:border-zinc-800 dark:bg-zinc-900">
-                <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border border-zinc-200 bg-white dark:border-zinc-700 dark:bg-zinc-950">
-                  {organization ? (
-                    <Building2 className="h-3.5 w-3.5 text-zinc-500" />
-                  ) : (
-                    <User className="h-3.5 w-3.5 text-zinc-500" />
-                  )}
+              <div className="rounded-2xl border border-zinc-100 bg-zinc-50/80 px-3 py-3 dark:border-zinc-800 dark:bg-zinc-900">
+                <div className="flex items-center gap-2.5">
+                  <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-zinc-200 bg-white dark:border-zinc-700 dark:bg-zinc-950">
+                    {organization ? (
+                      <Building2 className="h-4 w-4 text-zinc-500" />
+                    ) : (
+                      <User className="h-4 w-4 text-zinc-500" />
+                    )}
+                  </div>
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-medium text-zinc-700 dark:text-zinc-200">
+                      {workspaceTitle}
+                    </p>
+                    <p className="text-[11px] text-zinc-400 dark:text-zinc-500">
+                      {organization ? "Organization workspace" : "Personal workspace"}
+                    </p>
+                  </div>
                 </div>
-                <span className="truncate text-sm font-medium text-zinc-700 dark:text-zinc-200">
-                  {workspaceTitle}
-                </span>
               </div>
             </div>
 
