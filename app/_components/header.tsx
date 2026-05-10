@@ -21,6 +21,7 @@ import {
   LogOut,
   Moon,
   Plus,
+  Settings,
   Sun,
   User,
 } from "lucide-react";
@@ -161,6 +162,11 @@ function AccountMenu() {
     clerk.openUserProfile();
   }
 
+  function openOrganizationProfile() {
+    setIsOpen(false);
+    clerk.openOrganizationProfile();
+  }
+
   async function signOut() {
     setIsOpen(false);
     await clerk.signOut({ redirectUrl: "/" });
@@ -247,6 +253,14 @@ function AccountMenu() {
               disabled={isSwitchingWorkspace}
               onClick={openCreateOrganization}
             />
+            {organization && (
+              <MenuButton
+                icon={<Settings className="h-4 w-4" />}
+                label="Manage organization"
+                disabled={isSwitchingWorkspace}
+                onClick={openOrganizationProfile}
+              />
+            )}
             <MenuButton
               icon={<LogOut className="h-4 w-4" />}
               label="Sign out"

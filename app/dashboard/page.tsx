@@ -84,6 +84,86 @@ type FileItem = {
   folderId?: Id<"folders">;
 };
 
+function getFileExtension(name: string) {
+  const extension = name.split(".").pop()?.trim().toUpperCase();
+  return extension && extension.length <= 8 ? extension : null;
+}
+
+function FileCardThumbnail({
+  file,
+}: {
+  file: FileItem;
+}) {
+  const extension = getFileExtension(file.name);
+
+  if (file.type === "image" && file.url) {
+    return (
+      <Image
+        src={file.url}
+        alt={file.name}
+        fill
+        className="object-cover transition-transform duration-200 group-hover:scale-[1.02]"
+      />
+    );
+  }
+
+  if (file.type === "video" && file.url) {
+    return (
+      <video
+        src={file.url}
+        muted
+        playsInline
+        preload="metadata"
+        className="h-full w-full object-cover"
+      />
+    );
+  }
+
+  if (file.type === "pdf" && file.url) {
+    return (
+      <iframe
+        src={`${file.url}#toolbar=0&navpanes=0&scrollbar=0&page=1&view=FitH`}
+        title={`${file.name} thumbnail`}
+        className="h-full w-full bg-white pointer-events-none"
+      />
+    );
+  }
+
+  if (file.type === "audio") {
+    return (
+      <div className="flex h-full items-center justify-center bg-[radial-gradient(circle_at_top_left,#ffffff,transparent_42%),linear-gradient(135deg,#faf5ff,#f3e8ff)]">
+        <div className="flex items-end gap-1.5 rounded-2xl border border-white/70 bg-white/90 px-4 py-4 shadow-sm">
+          {[18, 28, 22, 34, 16].map((height, index) => (
+            <span
+              key={`${file._id}-bar-${index}`}
+              className="w-1.5 rounded-full bg-fuchsia-500/80"
+              style={{ height }}
+            />
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex h-full items-center justify-center bg-[radial-gradient(circle_at_top_left,#ffffff,transparent_42%),linear-gradient(135deg,#f4f4f5,#e4e4e7)]">
+      <div className="flex min-w-[120px] max-w-[78%] flex-col items-center gap-2 rounded-2xl border border-white/70 bg-white/90 px-4 py-4 text-center shadow-sm">
+        <div className="flex h-12 w-12 items-center justify-center rounded-2xl border border-zinc-100 bg-zinc-50">
+          <FileTypeIcon type={file.type} />
+        </div>
+        <div className="space-y-1">
+          <p className="line-clamp-1 text-xs font-semibold uppercase tracking-wide text-zinc-500">
+            {extension ?? file.type}
+          </p>
+          <p className="line-clamp-2 text-xs text-zinc-400">
+            {file.name}
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function DashboardPage() {
   const { isSignedIn, isLoaded } = useAuth();
   const router = useRouter();
@@ -633,7 +713,7 @@ export default function DashboardPage() {
         <div className="grid min-h-[calc(100vh-64px)] grid-cols-1 lg:grid-cols-[220px_minmax(0,1fr)]">
 
             {/* Sidebar */}
-          <aside className="relative flex flex-col gap-3 border-b border-zinc-200/80 bg-white px-3 py-3 dark:border-zinc-800 dark:bg-zinc-950 lg:h-[calc(100vh-64px)] lg:border-b-0 lg:border-r lg:py-5">
+          <aside className="relative flex flex-col gap-3 border-b border-zinc-200/80 bg-white px-3 py-3 dark:border-zinc-800 dark:bg-zinc-950 lg:max-h-[calc(100vh-64px)] lg:overflow-y-auto lg:border-b-0 lg:border-r lg:py-5">
             <div className="flex items-center gap-2 px-1 lg:mb-2">
               <button
                 type="button"
@@ -649,7 +729,7 @@ export default function DashboardPage() {
 
             <nav
               onClick={() => setIsMobileNavOpen(false)}
-              className={`absolute left-3 right-3 top-[72px] z-30 rounded-2xl border border-zinc-200 bg-white p-2 shadow-xl shadow-zinc-200/70 dark:border-zinc-800 dark:bg-zinc-950 dark:shadow-black/20 lg:static lg:block lg:flex-1 lg:overflow-y-auto lg:rounded-none lg:border-0 lg:bg-transparent lg:p-0 lg:shadow-none ${
+              className={`absolute left-3 right-3 top-[72px] z-30 rounded-2xl border border-zinc-200 bg-white p-2 shadow-xl shadow-zinc-200/70 dark:border-zinc-800 dark:bg-zinc-950 dark:shadow-black/20 lg:static lg:block lg:rounded-none lg:border-0 lg:bg-transparent lg:p-0 lg:shadow-none ${
                 isMobileNavOpen ? "grid gap-1" : "hidden"
               } lg:space-y-0.5`}
             >
@@ -1473,20 +1553,7 @@ export default function DashboardPage() {
                       className="relative h-28 w-full cursor-pointer overflow-hidden bg-zinc-100 dark:bg-zinc-800"
                       onClick={() => file.url && setPreviewFile(file)}
                     >
-                      {file.type === "image" && file.url ? (
-                        <Image
-                          src={file.url}
-                          alt={file.name}
-                          fill
-                          className="object-cover transition-transform duration-200 group-hover:scale-[1.02]"
-                        />
-                      ) : (
-                        <div className="flex h-full items-center justify-center bg-[radial-gradient(circle_at_top_left,#ffffff,transparent_42%),linear-gradient(135deg,#f4f4f5,#e4e4e7)]">
-                          <div className="flex h-14 w-14 items-center justify-center rounded-2xl border border-white/70 bg-white/85 shadow-sm">
-                            <FileTypeIcon type={file.type} />
-                          </div>
-                        </div>
-                      )}
+                      <FileCardThumbnail file={file} />
 
                       {file.url && (
                         <div className="absolute inset-0 flex items-center justify-center bg-zinc-950/0 opacity-0 transition-all duration-150 group-hover:bg-zinc-950/35 group-hover:opacity-100">
