@@ -21,7 +21,6 @@ import {
   LogOut,
   Moon,
   Plus,
-  Settings,
   Sun,
   User,
 } from "lucide-react";
@@ -88,6 +87,7 @@ function AccountMenu() {
     userMemberships: true,
   });
   const [isOpen, setIsOpen] = useState(false);
+  const [isSwitchingWorkspace, setIsSwitchingWorkspace] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -129,10 +129,28 @@ function AccountMenu() {
   }, [isLoaded, memberships, organization, router, setActive]);
 
   async function selectOrganization(organizationId: string | null) {
-    if (!isLoaded || !setActive) return;
-    await setActive({ organization: organizationId });
-    setIsOpen(false);
-    window.location.assign("/dashboard");
+    if (!isLoaded || !setActive || isSwitchingWorkspace) return;
+
+    const currentOrganizationId = organization?.id ?? null;
+    if (currentOrganizationId === organizationId) {
+      setIsOpen(false);
+      return;
+    }
+
+    try {
+      setIsSwitchingWorkspace(true);
+      await setActive({
+        organization: organizationId,
+        redirectUrl: "/dashboard",
+      });
+      setIsOpen(false);
+    } catch (error) {
+      console.error("Failed to switch organization", error);
+      setIsOpen(false);
+      await setActive({ organization: null, redirectUrl: "/dashboard" });
+    } finally {
+      setIsSwitchingWorkspace(false);
+    }
   }
 
   function openCreateOrganization() {
@@ -204,8 +222,9 @@ function AccountMenu() {
             <MenuButton
               icon={<User className="h-4 w-4" />}
               label="Personal"
-              sublabel={email}
+              sublabel={isSwitchingWorkspace && !organization ? "Switching..." : email}
               active={!organization}
+              disabled={isSwitchingWorkspace}
               onClick={() => selectOrganization(null)}
             />
 
@@ -214,8 +233,13 @@ function AccountMenu() {
                 key={membership.id}
                 icon={<Building2 className="h-4 w-4" />}
                 label={membership.organization.name}
-                sublabel="Organization"
+                sublabel={
+                  isSwitchingWorkspace && organization?.id === membership.organization.id
+                    ? "Switching..."
+                    : "Organization"
+                }
                 active={organization?.id === membership.organization.id}
+                disabled={isSwitchingWorkspace}
                 onClick={() => selectOrganization(membership.organization.id)}
               />
             ))}
@@ -223,22 +247,14 @@ function AccountMenu() {
             <div className="my-2 h-px bg-zinc-100 dark:bg-zinc-800" />
             <MenuButton
               icon={<Plus className="h-4 w-4" />}
-              label="New organization"
+              label={isSwitchingWorkspace ? "Please wait..." : "New organization"}
+              disabled={isSwitchingWorkspace}
               onClick={openCreateOrganization}
             />
-            {organization && (
-              <MenuButton
-                icon={<Settings className="h-4 w-4" />}
-                label="Organization settings"
-                onClick={() => {
-                  setIsOpen(false);
-                  clerk.openOrganizationProfile();
-                }}
-              />
-            )}
             <MenuButton
               icon={<LogOut className="h-4 w-4" />}
               label="Sign out"
+              disabled={isSwitchingWorkspace}
               onClick={signOut}
             />
           </div>
@@ -283,19 +299,22 @@ function MenuButton({
   label,
   sublabel,
   active,
+  disabled,
   onClick,
 }: {
   icon: React.ReactNode;
   label: string;
   sublabel?: string;
   active?: boolean;
+  disabled?: boolean;
   onClick: () => void;
 }) {
   return (
     <button
       type="button"
       onClick={onClick}
-      className={`flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left transition ${
+      disabled={disabled}
+      className={`flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left transition disabled:cursor-not-allowed disabled:opacity-60 ${
         active ? "bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-950" : "text-zinc-700 hover:bg-zinc-50 dark:text-zinc-300 dark:hover:bg-zinc-900"
       }`}
     >

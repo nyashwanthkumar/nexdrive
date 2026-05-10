@@ -21,7 +21,6 @@ import {
   ArrowDownAZ,
   ArrowDownZA,
   ArrowUpDown,
-  Building2,
   Check,
   Clock,
   Copy,
@@ -48,7 +47,6 @@ import {
   Star,
   Sun,
   Trash2,
-  User,
   Video,
   X,
 } from "lucide-react";
@@ -247,8 +245,6 @@ export default function DashboardPage() {
       current.filter((fileId) => displayedFiles.some((file) => file._id === fileId))
     );
   }, [displayedFiles]);
-
-  const workspaceTitle = organization ? organization.name : "Personal";
 
   function FileTypeIcon({ type }: { type: string }) {
     if (type === "image") return <ImageIcon className="h-7 w-7 text-sky-500" />;
@@ -816,23 +812,6 @@ export default function DashboardPage() {
               </div>
             )}
 
-            <div className="mt-auto hidden border-t border-zinc-100 pt-4 dark:border-zinc-800 lg:block">
-              <p className="mb-2 px-3 text-[10px] font-semibold uppercase tracking-widest text-zinc-400 dark:text-zinc-500">
-                Workspace
-              </p>
-              <div className="flex items-center gap-2.5 rounded-xl border border-zinc-100 bg-zinc-50/80 px-3 py-2 dark:border-zinc-800 dark:bg-zinc-900">
-                <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border border-zinc-200 bg-white dark:border-zinc-700 dark:bg-zinc-950">
-                  {organization ? (
-                    <Building2 className="h-3.5 w-3.5 text-zinc-500" />
-                  ) : (
-                    <User className="h-3.5 w-3.5 text-zinc-500" />
-                  )}
-                </div>
-                <span className="truncate text-sm font-medium text-zinc-700 dark:text-zinc-200">
-                  {workspaceTitle}
-                </span>
-              </div>
-            </div>
           </aside>
 
           {/* Content */}
