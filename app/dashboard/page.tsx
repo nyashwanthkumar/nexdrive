@@ -84,11 +84,6 @@ type FileItem = {
   folderId?: Id<"folders">;
 };
 
-function getFileExtension(name: string) {
-  const extension = name.split(".").pop()?.trim().toUpperCase();
-  return extension && extension.length <= 8 ? extension : null;
-}
-
 function FileTypeIcon({ type }: { type: string }) {
   if (type === "image") return <ImageIcon className="h-7 w-7 text-sky-500" />;
   if (type === "pdf") return <FileText className="h-7 w-7 text-red-500" />;
@@ -104,8 +99,6 @@ function FileCardThumbnail({
 }: {
   file: FileItem;
 }) {
-  const extension = getFileExtension(file.name);
-
   if (file.type === "image" && file.url) {
     return (
       <Image
@@ -129,46 +122,10 @@ function FileCardThumbnail({
     );
   }
 
-  if (file.type === "pdf" && file.url) {
-    return (
-      <iframe
-        src={`${file.url}#toolbar=0&navpanes=0&scrollbar=0&page=1&view=FitH`}
-        title={`${file.name} thumbnail`}
-        className="h-full w-full bg-white pointer-events-none"
-      />
-    );
-  }
-
-  if (file.type === "audio") {
-    return (
-      <div className="flex h-full items-center justify-center bg-[radial-gradient(circle_at_top_left,#ffffff,transparent_42%),linear-gradient(135deg,#faf5ff,#f3e8ff)]">
-        <div className="flex items-end gap-1.5 rounded-2xl border border-white/70 bg-white/90 px-4 py-4 shadow-sm">
-          {[18, 28, 22, 34, 16].map((height, index) => (
-            <span
-              key={`${file._id}-bar-${index}`}
-              className="w-1.5 rounded-full bg-fuchsia-500/80"
-              style={{ height }}
-            />
-          ))}
-        </div>
-      </div>
-    );
-  }
-
   return (
     <div className="flex h-full items-center justify-center bg-[radial-gradient(circle_at_top_left,#ffffff,transparent_42%),linear-gradient(135deg,#f4f4f5,#e4e4e7)]">
-      <div className="flex min-w-[120px] max-w-[78%] flex-col items-center gap-2 rounded-2xl border border-white/70 bg-white/90 px-4 py-4 text-center shadow-sm">
-        <div className="flex h-12 w-12 items-center justify-center rounded-2xl border border-zinc-100 bg-zinc-50">
+      <div className="flex h-14 w-14 items-center justify-center rounded-2xl border border-white/70 bg-white/85 shadow-sm">
           <FileTypeIcon type={file.type} />
-        </div>
-        <div className="space-y-1">
-          <p className="line-clamp-1 text-xs font-semibold uppercase tracking-wide text-zinc-500">
-            {extension ?? file.type}
-          </p>
-          <p className="line-clamp-2 text-xs text-zinc-400">
-            {file.name}
-          </p>
-        </div>
       </div>
     </div>
   );
