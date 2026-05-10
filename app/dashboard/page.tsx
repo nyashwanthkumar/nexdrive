@@ -67,8 +67,7 @@ type ViewType =
   | "documents"
   | "pdfs"
   | "trash"
-  | "activity"
-  | "users";
+  | "activity";
 type DisplayMode = "grid" | "list";
 type SortMode = "newest" | "oldest" | "nameAsc" | "nameDesc";
 
@@ -171,8 +170,6 @@ export default function DashboardPage() {
     api.files.getShareLinks,
     orgId ? { orgId } : "skip"
   );
-  const users = useQuery(api.users.listUsers, user ? {} : "skip");
-
   useEffect(() => {
     if (isLoaded && !isSignedIn) router.push("/");
   }, [isLoaded, isSignedIn, router]);
@@ -223,7 +220,7 @@ export default function DashboardPage() {
           : !file.folderId;
 
       if (activeView === "starred") return matchesSearch && file.isFavorite;
-      if (activeView === "activity" || activeView === "users") return false;
+      if (activeView === "activity") return false;
       if (activeView === "folders") {
         return currentFolderId ? matchesSearch && matchesFolder : false;
       }
@@ -277,7 +274,6 @@ export default function DashboardPage() {
     pdfs: { label: "PDFs", description: "PDF files in this workspace" },
     trash: { label: "Trash", description: "Restore or permanently remove deleted files" },
     activity: { label: "Recent activity", description: "Latest file changes in this workspace" },
-    users: { label: "Users", description: "People who have created a NexDrive account" },
   }[activeView];
 
   const visibleFolders = useMemo(() => {
@@ -315,16 +311,6 @@ export default function DashboardPage() {
     return [];
   }, [activeView, currentFolderId, folders, search]);
 
-  const visibleUsers = useMemo(() => {
-    return [...(users ?? [])].filter((member) => {
-      const term = search.toLowerCase();
-      return (
-        member.name.toLowerCase().includes(term) ||
-        member.email.toLowerCase().includes(term)
-      );
-    });
-  }, [search, users]);
-
   useEffect(() => {
     setSelectedFolderIds((current) =>
       current.filter((folderId) => visibleFolders.some((folder) => folder._id === folderId))
@@ -348,7 +334,7 @@ export default function DashboardPage() {
   const selectableFiles = displayedFiles.filter((file) => activeView === "trash" || canManageFile(file));
   const selectableFolders = visibleFolders.filter((folder) => activeView === "trash" || canManageFolder(folder));
   const selectedItemCount = selectedFiles.length + selectedFolders.length;
-  const toolbarItemCount = activeView === "users" ? visibleUsers.length : displayedFiles.length + visibleFolders.length;
+  const toolbarItemCount = displayedFiles.length + visibleFolders.length;
 
   function formatBytes(size: number) {
     if (!size) return "0 MB";
@@ -734,15 +720,6 @@ export default function DashboardPage() {
                 }}
               />
               <SidebarItem
-                active={activeView === "users"}
-                icon={<User className="h-4 w-4" />}
-                label="Users"
-                onClick={() => {
-                  setActiveView("users");
-                  setCurrentFolderId(null);
-                }}
-              />
-              <SidebarItem
                 active={activeView === "folders"}
                 icon={<FolderOpen className="h-4 w-4" />}
                 label="Folders"
@@ -899,7 +876,7 @@ export default function DashboardPage() {
                     </span>
                   )}
                 </Button>
-                {activeView !== "users" && selectableFiles.length + selectableFolders.length > 0 && (
+                {selectableFiles.length + selectableFolders.length > 0 && (
                   <Button
                     variant="outline"
                     size="sm"
@@ -1034,16 +1011,13 @@ export default function DashboardPage() {
             {!isLoading &&
               displayedFiles.length === 0 &&
               visibleFolders.length === 0 &&
-              (activeView !== "activity" || (activityLogs ?? []).length === 0) &&
-              (activeView !== "users" || visibleUsers.length === 0) && (
+              (activeView !== "activity" || (activityLogs ?? []).length === 0) && (
               <div className="flex flex-1 flex-col items-center justify-center gap-3 py-24 text-center">
                 <div className="flex h-11 w-11 items-center justify-center rounded-lg border border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-900">
                   {activeView === "trash" ? (
                     <Trash2 className="h-5 w-5 text-zinc-400" />
                   ) : activeView === "activity" ? (
                     <Activity className="h-5 w-5 text-zinc-400" />
-                  ) : activeView === "users" ? (
-                    <User className="h-5 w-5 text-zinc-400" />
                   ) : activeView === "starred" ? (
                     <Star className="h-5 w-5 text-zinc-400" />
                   ) : activeView === "folders" ? (
@@ -1068,8 +1042,6 @@ export default function DashboardPage() {
                       ? "Trash is empty"
                       : activeView === "activity"
                       ? "No activity yet"
-                      : activeView === "users"
-                      ? "No users yet"
                       : activeView === "starred"
                       ? "No starred files yet"
                       : activeView === "folders"
@@ -1093,8 +1065,6 @@ export default function DashboardPage() {
                       ? "Deleted files will appear here"
                       : activeView === "activity"
                       ? "Upload, rename, share, or delete a file to see updates here"
-                      : activeView === "users"
-                      ? "User accounts will appear here after someone signs in"
                       : activeView === "starred"
                       ? "Star a file to add it here"
                       : activeView === "folders"
@@ -1139,55 +1109,6 @@ export default function DashboardPage() {
                       <p className="mt-1 text-xs text-zinc-400 dark:text-zinc-500">
                         {new Date(item.createdAt).toLocaleString()}
                       </p>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-
-            {!isLoading && activeView === "users" && visibleUsers.length > 0 && (
-              <div className="overflow-hidden rounded-2xl border border-zinc-200/80 bg-white shadow-sm shadow-zinc-200/40 dark:border-zinc-800 dark:bg-zinc-900 dark:shadow-none">
-                {visibleUsers.map((member) => (
-                  <div
-                    key={member._id}
-                    className="flex flex-col gap-3 border-b border-zinc-100 px-5 py-4 last:border-b-0 dark:border-zinc-800 sm:flex-row sm:items-center sm:justify-between"
-                  >
-                    <div className="flex min-w-0 items-center gap-3">
-                      <div
-                        className="flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-full bg-zinc-100 text-sm font-semibold text-zinc-700 dark:bg-zinc-800 dark:text-zinc-200"
-                        style={
-                          member.imageUrl
-                            ? {
-                                backgroundImage: `url(${member.imageUrl})`,
-                                backgroundPosition: "center",
-                                backgroundSize: "cover",
-                              }
-                            : undefined
-                        }
-                      >
-                        {!member.imageUrl && member.name.trim().charAt(0).toUpperCase()}
-                      </div>
-                      <div className="min-w-0">
-                        <p className="truncate text-sm font-medium text-zinc-900 dark:text-zinc-50">
-                          {member.name}
-                        </p>
-                        <p className="truncate text-xs text-zinc-500 dark:text-zinc-400">
-                          {member.email}
-                        </p>
-                      </div>
-                    </div>
-                    <div className="flex flex-wrap items-center gap-2 text-xs text-zinc-500 dark:text-zinc-400">
-                      <span className="rounded-full bg-zinc-100 px-2.5 py-1 dark:bg-zinc-800">
-                        Joined {new Date(member.joinedAt).toLocaleDateString()}
-                      </span>
-                      <span className="rounded-full bg-zinc-100 px-2.5 py-1 dark:bg-zinc-800">
-                        Last seen {new Date(member.lastSeenAt).toLocaleDateString()}
-                      </span>
-                      {member.clerkId === user?.id && (
-                        <span className="rounded-full bg-zinc-900 px-2.5 py-1 text-white dark:bg-zinc-100 dark:text-zinc-950">
-                          You
-                        </span>
-                      )}
                     </div>
                   </div>
                 ))}
