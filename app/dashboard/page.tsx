@@ -67,7 +67,8 @@ type ViewType =
   | "documents"
   | "pdfs"
   | "trash"
-  | "activity";
+  | "activity"
+  | "users";
 type DisplayMode = "grid" | "list";
 type SortMode = "newest" | "oldest" | "nameAsc" | "nameDesc";
 
@@ -104,6 +105,7 @@ export default function DashboardPage() {
   const toggleFavoriteFolder = useMutation(api.files.toggleFavoriteFolder);
   const createShareLink = useMutation(api.files.createShareLink);
   const revokeShareLink = useMutation(api.files.revokeShareLink);
+  const syncCurrentUser = useMutation(api.users.syncCurrentUser);
 
   const [search, setSearch] = useState("");
   const [activeView, setActiveView] = useState<ViewType>("recent");
@@ -169,10 +171,22 @@ export default function DashboardPage() {
     api.files.getShareLinks,
     orgId ? { orgId } : "skip"
   );
+  const users = useQuery(api.users.listUsers, user ? {} : "skip");
 
   useEffect(() => {
     if (isLoaded && !isSignedIn) router.push("/");
   }, [isLoaded, isSignedIn, router]);
+
+  useEffect(() => {
+    if (!user) return;
+
+    void syncCurrentUser({
+      clerkId: user.id,
+      email: user.primaryEmailAddress?.emailAddress ?? "",
+      name: user.fullName ?? user.username ?? "NexDrive user",
+      imageUrl: user.imageUrl,
+    });
+  }, [syncCurrentUser, user]);
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -209,7 +223,7 @@ export default function DashboardPage() {
           : !file.folderId;
 
       if (activeView === "starred") return matchesSearch && file.isFavorite;
-      if (activeView === "activity") return false;
+      if (activeView === "activity" || activeView === "users") return false;
       if (activeView === "folders") {
         return currentFolderId ? matchesSearch && matchesFolder : false;
       }
@@ -263,6 +277,7 @@ export default function DashboardPage() {
     pdfs: { label: "PDFs", description: "PDF files in this workspace" },
     trash: { label: "Trash", description: "Restore or permanently remove deleted files" },
     activity: { label: "Recent activity", description: "Latest file changes in this workspace" },
+    users: { label: "Users", description: "People who have created a NexDrive account" },
   }[activeView];
 
   const visibleFolders = useMemo(() => {
@@ -300,6 +315,16 @@ export default function DashboardPage() {
     return [];
   }, [activeView, currentFolderId, folders, search]);
 
+  const visibleUsers = useMemo(() => {
+    return [...(users ?? [])].filter((member) => {
+      const term = search.toLowerCase();
+      return (
+        member.name.toLowerCase().includes(term) ||
+        member.email.toLowerCase().includes(term)
+      );
+    });
+  }, [search, users]);
+
   useEffect(() => {
     setSelectedFolderIds((current) =>
       current.filter((folderId) => visibleFolders.some((folder) => folder._id === folderId))
@@ -323,6 +348,7 @@ export default function DashboardPage() {
   const selectableFiles = displayedFiles.filter((file) => activeView === "trash" || canManageFile(file));
   const selectableFolders = visibleFolders.filter((folder) => activeView === "trash" || canManageFolder(folder));
   const selectedItemCount = selectedFiles.length + selectedFolders.length;
+  const toolbarItemCount = activeView === "users" ? visibleUsers.length : displayedFiles.length + visibleFolders.length;
 
   function formatBytes(size: number) {
     if (!size) return "0 MB";
@@ -676,7 +702,7 @@ export default function DashboardPage() {
                     />
                   </div>
                   <p className="mt-2 text-xs text-zinc-500 dark:text-zinc-400">
-                    {formatBytes(storageTotal)} of {formatBytes(storageLimit)} · {storageStats.fileCount} files
+                    {formatBytes(storageTotal)} of {formatBytes(storageLimit)} • {storageStats.fileCount} files
                   </p>
                 </div>
               )}
@@ -704,6 +730,15 @@ export default function DashboardPage() {
                 label="Activity"
                 onClick={() => {
                   setActiveView("activity");
+                  setCurrentFolderId(null);
+                }}
+              />
+              <SidebarItem
+                active={activeView === "users"}
+                icon={<User className="h-4 w-4" />}
+                label="Users"
+                onClick={() => {
+                  setActiveView("users");
                   setCurrentFolderId(null);
                 }}
               />
@@ -844,10 +879,10 @@ export default function DashboardPage() {
                 <p className="mt-0.5 text-xs text-zinc-500 dark:text-zinc-400">{viewMeta.description}</p>
               </div>
               <div className="flex flex-wrap items-center justify-end gap-2 rounded-2xl border border-zinc-200/80 bg-white/85 p-1.5 shadow-sm shadow-zinc-200/50 backdrop-blur dark:border-zinc-800 dark:bg-zinc-900/85 dark:shadow-none">
-                {!isLoading && displayedFiles.length + visibleFolders.length > 0 && (
+                {!isLoading && toolbarItemCount > 0 && (
                   <span className="hidden rounded-lg bg-zinc-100 px-2.5 py-2 text-xs font-medium text-zinc-500 dark:bg-zinc-800 dark:text-zinc-400 sm:inline-flex">
-                    {displayedFiles.length + visibleFolders.length}{" "}
-                    {displayedFiles.length + visibleFolders.length === 1 ? "item" : "items"}
+                    {toolbarItemCount}{" "}
+                    {toolbarItemCount === 1 ? "item" : "items"}
                   </span>
                 )}
                 <Button
@@ -864,7 +899,7 @@ export default function DashboardPage() {
                     </span>
                   )}
                 </Button>
-                {selectableFiles.length + selectableFolders.length > 0 && (
+                {activeView !== "users" && selectableFiles.length + selectableFolders.length > 0 && (
                   <Button
                     variant="outline"
                     size="sm"
@@ -999,13 +1034,16 @@ export default function DashboardPage() {
             {!isLoading &&
               displayedFiles.length === 0 &&
               visibleFolders.length === 0 &&
-              (activeView !== "activity" || (activityLogs ?? []).length === 0) && (
+              (activeView !== "activity" || (activityLogs ?? []).length === 0) &&
+              (activeView !== "users" || visibleUsers.length === 0) && (
               <div className="flex flex-1 flex-col items-center justify-center gap-3 py-24 text-center">
                 <div className="flex h-11 w-11 items-center justify-center rounded-lg border border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-900">
                   {activeView === "trash" ? (
                     <Trash2 className="h-5 w-5 text-zinc-400" />
                   ) : activeView === "activity" ? (
                     <Activity className="h-5 w-5 text-zinc-400" />
+                  ) : activeView === "users" ? (
+                    <User className="h-5 w-5 text-zinc-400" />
                   ) : activeView === "starred" ? (
                     <Star className="h-5 w-5 text-zinc-400" />
                   ) : activeView === "folders" ? (
@@ -1030,6 +1068,8 @@ export default function DashboardPage() {
                       ? "Trash is empty"
                       : activeView === "activity"
                       ? "No activity yet"
+                      : activeView === "users"
+                      ? "No users yet"
                       : activeView === "starred"
                       ? "No starred files yet"
                       : activeView === "folders"
@@ -1053,6 +1093,8 @@ export default function DashboardPage() {
                       ? "Deleted files will appear here"
                       : activeView === "activity"
                       ? "Upload, rename, share, or delete a file to see updates here"
+                      : activeView === "users"
+                      ? "User accounts will appear here after someone signs in"
                       : activeView === "starred"
                       ? "Star a file to add it here"
                       : activeView === "folders"
@@ -1097,6 +1139,55 @@ export default function DashboardPage() {
                       <p className="mt-1 text-xs text-zinc-400 dark:text-zinc-500">
                         {new Date(item.createdAt).toLocaleString()}
                       </p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {!isLoading && activeView === "users" && visibleUsers.length > 0 && (
+              <div className="overflow-hidden rounded-2xl border border-zinc-200/80 bg-white shadow-sm shadow-zinc-200/40 dark:border-zinc-800 dark:bg-zinc-900 dark:shadow-none">
+                {visibleUsers.map((member) => (
+                  <div
+                    key={member._id}
+                    className="flex flex-col gap-3 border-b border-zinc-100 px-5 py-4 last:border-b-0 dark:border-zinc-800 sm:flex-row sm:items-center sm:justify-between"
+                  >
+                    <div className="flex min-w-0 items-center gap-3">
+                      <div
+                        className="flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-full bg-zinc-100 text-sm font-semibold text-zinc-700 dark:bg-zinc-800 dark:text-zinc-200"
+                        style={
+                          member.imageUrl
+                            ? {
+                                backgroundImage: `url(${member.imageUrl})`,
+                                backgroundPosition: "center",
+                                backgroundSize: "cover",
+                              }
+                            : undefined
+                        }
+                      >
+                        {!member.imageUrl && member.name.trim().charAt(0).toUpperCase()}
+                      </div>
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-medium text-zinc-900 dark:text-zinc-50">
+                          {member.name}
+                        </p>
+                        <p className="truncate text-xs text-zinc-500 dark:text-zinc-400">
+                          {member.email}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-2 text-xs text-zinc-500 dark:text-zinc-400">
+                      <span className="rounded-full bg-zinc-100 px-2.5 py-1 dark:bg-zinc-800">
+                        Joined {new Date(member.joinedAt).toLocaleDateString()}
+                      </span>
+                      <span className="rounded-full bg-zinc-100 px-2.5 py-1 dark:bg-zinc-800">
+                        Last seen {new Date(member.lastSeenAt).toLocaleDateString()}
+                      </span>
+                      {member.clerkId === user?.id && (
+                        <span className="rounded-full bg-zinc-900 px-2.5 py-1 text-white dark:bg-zinc-100 dark:text-zinc-950">
+                          You
+                        </span>
+                      )}
                     </div>
                   </div>
                 ))}
@@ -1191,44 +1282,47 @@ export default function DashboardPage() {
             )}
 
             {!isLoading && visibleFolders.length > 0 && displayMode === "list" && (
-              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 overflow-visible">
+              <div className="overflow-hidden rounded-2xl border border-zinc-200/80 bg-white shadow-sm shadow-zinc-200/40 dark:border-zinc-800 dark:bg-zinc-900 dark:shadow-none">
                 {visibleFolders.map((folder) => (
                   <div
                     key={folder._id}
-                    className="flex h-20 items-center gap-3 rounded-2xl border border-zinc-200/80 bg-white px-4 shadow-sm shadow-zinc-200/40 transition-colors hover:bg-zinc-50/70"
+                    className="flex flex-col gap-3 border-b border-zinc-100 px-5 py-4 transition-colors last:border-b-0 hover:bg-zinc-50/70 dark:border-zinc-800 dark:hover:bg-zinc-800/70 sm:flex-row sm:items-center sm:justify-between"
                   >
-                    <button
-                      type="button"
-                      aria-label={selectedFolderIds.includes(folder._id) ? "Unselect folder" : "Select folder"}
-                      disabled={!canManageFolder(folder)}
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        toggleSelectedFolder(folder._id);
-                      }}
-                      className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border transition disabled:cursor-not-allowed disabled:opacity-40 ${
-                        selectedFolderIds.includes(folder._id)
-                          ? "border-zinc-900 bg-zinc-900 text-white dark:border-zinc-100 dark:bg-zinc-100 dark:text-zinc-950"
-                          : "border-zinc-200 bg-white text-zinc-400 hover:border-zinc-300 dark:border-zinc-700 dark:bg-zinc-900"
-                      }`}
-                    >
-                      {selectedFolderIds.includes(folder._id) && <Check className="h-4 w-4" />}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        if (activeView !== "trash") setCurrentFolderId(folder._id);
-                      }}
-                      className="flex min-w-0 flex-1 items-center gap-3 text-left"
-                    >
-                      <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-zinc-50">
-                        <FolderOpen className="h-5 w-5 text-zinc-600" />
-                      </span>
-                      <span className="min-w-0 flex-1">
-                        <span className="block truncate text-sm font-medium text-zinc-900">
-                          {folder.name}
+                    <div className="flex min-w-0 flex-1 items-center gap-3">
+                      <button
+                        type="button"
+                        aria-label={selectedFolderIds.includes(folder._id) ? "Unselect folder" : "Select folder"}
+                        disabled={!canManageFolder(folder)}
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          toggleSelectedFolder(folder._id);
+                        }}
+                        className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border transition disabled:cursor-not-allowed disabled:opacity-40 ${
+                          selectedFolderIds.includes(folder._id)
+                            ? "border-zinc-900 bg-zinc-900 text-white dark:border-zinc-100 dark:bg-zinc-100 dark:text-zinc-950"
+                            : "border-zinc-200 bg-white text-zinc-400 hover:border-zinc-300 dark:border-zinc-700 dark:bg-zinc-900"
+                        }`}
+                      >
+                        {selectedFolderIds.includes(folder._id) && <Check className="h-4 w-4" />}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (activeView !== "trash") setCurrentFolderId(folder._id);
+                        }}
+                        className="flex min-w-0 flex-1 items-center gap-3 text-left"
+                      >
+                        <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-zinc-100 bg-zinc-50 text-zinc-700 dark:border-zinc-800 dark:bg-zinc-800 dark:text-zinc-200">
+                          <FolderOpen className="h-5 w-5" />
                         </span>
-                      </span>
-                    </button>
+                        <div className="min-w-0">
+                          <p className="truncate text-sm font-semibold text-zinc-900 dark:text-zinc-50">
+                            {folder.name}
+                          </p>
+                          <p className="text-xs text-zinc-400 dark:text-zinc-500">Folder</p>
+                        </div>
+                      </button>
+                    </div>
                     {activeView === "trash" ? (
                       <div className="flex shrink-0 items-center gap-2">
                         <Button
@@ -1283,7 +1377,7 @@ export default function DashboardPage() {
                 {displayedFiles.map((file) => (
                   <div
                     key={file._id}
-                    className="flex flex-col gap-3 border-b border-zinc-100 px-5 py-3.5 transition-colors last:border-b-0 hover:bg-zinc-50/70 dark:border-zinc-800 dark:hover:bg-zinc-800/70 sm:flex-row sm:items-center sm:justify-between"
+                    className="flex flex-col gap-3 border-b border-zinc-100 px-5 py-4 transition-colors last:border-b-0 hover:bg-zinc-50/70 dark:border-zinc-800 dark:hover:bg-zinc-800/70 lg:flex-row lg:items-center lg:justify-between"
                   >
                     <div className="flex min-w-0 flex-1 items-center gap-3">
                       <button
@@ -1303,7 +1397,7 @@ export default function DashboardPage() {
                         type="button"
                         disabled={!file.url}
                         onClick={() => file.url && setPreviewFile(file)}
-                        className="flex min-w-0 items-center gap-3 text-left disabled:cursor-default"
+                        className="flex min-w-0 flex-1 items-center gap-3 text-left disabled:cursor-default"
                       >
                         <div className="flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-zinc-100 bg-zinc-50 dark:border-zinc-800 dark:bg-zinc-800">
                           {file.type === "image" && file.url ? (
@@ -1318,18 +1412,21 @@ export default function DashboardPage() {
                             <FileTypeIcon type={file.type} />
                           )}
                         </div>
-                        <div className="min-w-0">
+                        <div className="min-w-0 flex-1">
                           <p className="truncate text-[15px] font-semibold text-zinc-900 dark:text-zinc-50">
                             {file.name}
                           </p>
-                          <span className="text-[10px] font-medium uppercase tracking-wide text-zinc-400">
-                            {file.type}
-                          </span>
+                          <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-zinc-400 dark:text-zinc-500">
+                            <span className="rounded-full bg-zinc-100 px-2 py-0.5 font-medium uppercase tracking-wide dark:bg-zinc-800">
+                              {file.type}
+                            </span>
+                            {typeof file.size === "number" && <span>{formatBytes(file.size)}</span>}
+                          </div>
                         </div>
                       </button>
                     </div>
 
-                    <div className="flex shrink-0 flex-wrap items-center gap-2">
+                    <div className="flex shrink-0 flex-wrap items-center gap-2 lg:justify-end">
                       {activeView !== "trash" ? (
                         <>
                           <Button

@@ -30,12 +30,12 @@ export default function HomePage() {
       <section className="mx-auto grid min-h-[calc(100vh-144px)] w-full max-w-6xl items-center gap-10 lg:grid-cols-[minmax(0,0.95fr)_minmax(420px,1fr)]">
         <div className="max-w-xl">
           <h1 className="text-4xl font-semibold tracking-tight text-zinc-950 dark:text-zinc-50 sm:text-5xl">
-            NexDrive for project files.
+            Keep project files in one clear place.
           </h1>
 
           <p className="mt-4 max-w-md text-base leading-7 text-zinc-600 dark:text-zinc-400">
-            Upload files, keep folders tidy, and send share links when someone
-            needs access.
+            Upload files, sort them into folders, preview what you need, and
+            send a link when it is time to share.
           </p>
 
           <div className="mt-7 flex flex-col gap-3 sm:flex-row">
@@ -48,10 +48,10 @@ export default function HomePage() {
 
           <div className="mt-8 grid gap-3 text-sm text-zinc-600 dark:text-zinc-400 sm:grid-cols-2">
             {[
-              "Preview PDFs and images",
-              "Expiring share links",
+              "PDF and image previews",
+              "Share links with expiry",
               "Recent activity",
-              "Storage usage",
+              "Simple storage tracking",
             ].map((item) => (
               <div key={item} className="flex items-center gap-2">
                 <CheckCircle2 className="h-4 w-4 text-zinc-900 dark:text-zinc-100" />
@@ -68,7 +68,7 @@ export default function HomePage() {
                 <p className="text-sm font-semibold text-zinc-950 dark:text-zinc-50">
                   Recent
                 </p>
-                <p className="text-xs text-zinc-500">7 items in workspace</p>
+                <p className="text-xs text-zinc-500">A simple view of your latest files</p>
               </div>
               <div className="flex items-center gap-2 rounded-full border border-zinc-200 bg-white p-1 dark:border-zinc-800 dark:bg-zinc-900">
                 <span className="rounded-full bg-zinc-900 px-3 py-1 text-xs text-white dark:bg-zinc-100 dark:text-zinc-950">

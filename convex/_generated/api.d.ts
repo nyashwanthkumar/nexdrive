@@ -10,6 +10,7 @@
 
 import type * as crons from "../crons.js";
 import type * as files from "../files.js";
+import type * as users from "../users.js";
 
 import type {
   ApiFromModules,
@@ -20,6 +21,7 @@ import type {
 declare const fullApi: ApiFromModules<{
   crons: typeof crons;
   files: typeof files;
+  users: typeof users;
 }>;
 
 /**

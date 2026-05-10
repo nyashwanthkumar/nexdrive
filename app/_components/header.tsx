@@ -14,6 +14,7 @@ import { useTheme } from "./theme-provider";
 import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import {
+  Bot,
   Building2,
   Check,
   ChevronRight,
@@ -40,7 +41,17 @@ export function Header() {
         <div className="flex items-center gap-2">
           <ThemeToggle />
           {isSignedIn ? (
-            <AccountMenu />
+            <>
+              <Button
+                type="button"
+                variant="outline"
+                className="h-9 rounded-full px-4"
+              >
+                <Bot className="mr-2 h-4 w-4" />
+                Ask AI
+              </Button>
+              <AccountMenu />
+            </>
           ) : showHeaderSignIn ? (
             <SignInButton mode="modal" forceRedirectUrl="/dashboard">
               <Button>Sign in</Button>
@@ -196,7 +207,6 @@ function AccountMenu() {
             ))}
 
             <div className="my-2 h-px bg-zinc-100 dark:bg-zinc-800" />
-
             <MenuButton
               icon={<Plus className="h-4 w-4" />}
               label="New organization"
