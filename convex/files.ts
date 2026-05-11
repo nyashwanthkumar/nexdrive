@@ -25,10 +25,20 @@ function getActiveWorkspaceIds(identity: { subject: string } & Record<string, un
   ].filter((value): value is string => !!value);
 }
 
+function hasOrganizationSession(identity: Record<string, unknown>) {
+  return (
+    typeof identity.orgRole === "string" ||
+    typeof identity.org_role === "string" ||
+    typeof identity.orgSlug === "string" ||
+    typeof identity.org_slug === "string" ||
+    getActiveWorkspaceIds(identity as { subject: string } & Record<string, unknown>).length > 0
+  );
+}
+
 function canAccessWorkspace(orgId: string, identity: { subject: string } & Record<string, unknown>) {
   return isPersonalWorkspace(orgId)
     ? orgId === identity.subject
-    : getActiveWorkspaceIds(identity).includes(orgId);
+    : getActiveWorkspaceIds(identity).includes(orgId) || hasOrganizationSession(identity);
 }
 
 function isFileOwner(file: { userId?: string; orgId: string }, identity: { subject: string }) {
