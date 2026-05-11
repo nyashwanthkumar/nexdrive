@@ -200,6 +200,7 @@ export default function DashboardPage() {
   const [isAskAiOpen, setIsAskAiOpen] = useState(false);
   const [askAiQuestion, setAskAiQuestion] = useState("Summarize this view");
   const [askAiResult, setAskAiResult] = useState<AskAiResult | null>(null);
+  const [isAskAiLoading, setIsAskAiLoading] = useState(false);
 
   const orgId = organization?.id ?? user?.id;
 
@@ -417,6 +418,76 @@ export default function DashboardPage() {
     return `${(size / (1024 * 1024 * 1024)).toFixed(1)} GB`;
   }
 
+  function formatDuration(totalSeconds: number) {
+    if (totalSeconds < 60) return `${Math.round(totalSeconds)} seconds`;
+    const minutes = Math.floor(totalSeconds / 60);
+    const seconds = Math.round(totalSeconds % 60);
+    return `${minutes} min ${seconds} sec`;
+  }
+
+  function normalizeQuestion(value: string) {
+    return value.toLowerCase().replace(/[^\w\s.]/g, " ").replace(/\s+/g, " ").trim();
+  }
+
+  function findRelevantFile(question: string, allowedTypes?: string[]) {
+    const normalized = normalizeQuestion(question);
+    const searchFiles = [...displayedFiles, ...((activeFiles ?? []).filter(
+      (file) => !displayedFiles.some((displayed) => displayed._id === file._id)
+    ))];
+
+    const filteredByType = allowedTypes?.length
+      ? searchFiles.filter((file) => allowedTypes.includes(file.type))
+      : searchFiles;
+
+    const byName = filteredByType.find((file) => {
+      const candidates = [
+        file.name.toLowerCase(),
+        file.name.toLowerCase().replace(/\.[^.]+$/, ""),
+      ];
+      return candidates.some((candidate) => normalized.includes(candidate));
+    });
+
+    if (byName) return byName;
+
+    if (allowedTypes?.includes("audio")) {
+      return filteredByType.find((file) => file.type === "audio") ?? null;
+    }
+    if (allowedTypes?.includes("video")) {
+      return filteredByType.find((file) => file.type === "video") ?? null;
+    }
+    if (allowedTypes?.includes("image")) {
+      return filteredByType.find((file) => file.type === "image") ?? null;
+    }
+
+    return filteredByType[0] ?? null;
+  }
+
+  async function readMediaDuration(file: FileItem) {
+    if (!file.url || !["audio", "video"].includes(file.type)) return null;
+
+    return await new Promise<number | null>((resolve) => {
+      const media = document.createElement(file.type === "audio" ? "audio" : "video");
+      media.preload = "metadata";
+      media.src = file.url!;
+
+      const cleanup = () => {
+        media.removeAttribute("src");
+        media.load();
+      };
+
+      media.onloadedmetadata = () => {
+        const duration = Number.isFinite(media.duration) ? media.duration : null;
+        cleanup();
+        resolve(duration);
+      };
+
+      media.onerror = () => {
+        cleanup();
+        resolve(null);
+      };
+    });
+  }
+
   function detectAskAiIntent(question: string): AskAiIntent {
     const value = question.toLowerCase();
     if (value.includes("duplicate")) return "duplicates";
@@ -554,11 +625,113 @@ export default function DashboardPage() {
     };
   }
 
-  function runAskAi(nextQuestion = askAiQuestion) {
-    const intent = detectAskAiIntent(nextQuestion);
-    setAskAiQuestion(nextQuestion);
-    setAskAiResult(buildAskAiResult(intent));
+  async function answerAskAiQuestion(question: string): Promise<AskAiResult> {
+    const normalized = normalizeQuestion(question);
+    const intent = detectAskAiIntent(question);
+
+    if (
+      normalized.includes("how many") ||
+      normalized.includes("count") ||
+      normalized.includes("number of")
+    ) {
+      const typeMatchers: Array<[string, string[]]> = [
+        ["audio", ["audio", "music", "song"]],
+        ["video", ["video", "videos"]],
+        ["image", ["image", "images", "photo", "photos"]],
+        ["pdf", ["pdf", "pdfs"]],
+        ["document", ["document", "documents", "doc", "docs"]],
+        ["spreadsheet", ["spreadsheet", "spreadsheets", "sheet", "sheets"]],
+      ];
+      const match = typeMatchers.find(([, terms]) => terms.some((term) => normalized.includes(term)));
+
+      if (normalized.includes("folder")) {
+        return {
+          intent: "summary",
+          title: "Folder count",
+          summary: `There ${visibleFolders.length === 1 ? "is" : "are"} ${visibleFolders.length} folder${visibleFolders.length === 1 ? "" : "s"} in this view.`,
+          bullets: [
+            currentFolderId ? "You are looking inside a specific folder." : "This count is for the current workspace view.",
+          ],
+        };
+      }
+
+      if (match) {
+        const [type] = match;
+        const count = displayedFiles.filter((file) => file.type === type || (type === "document" && ["document", "spreadsheet"].includes(file.type))).length;
+        return {
+          intent: "summary",
+          title: "File count",
+          summary: `There ${count === 1 ? "is" : "are"} ${count} ${type}${count === 1 ? "" : "s"} in this view.`,
+          bullets: [
+            `Current view: ${viewMeta.label}.`,
+            `Total visible files: ${displayedFiles.length}.`,
+          ],
+        };
+      }
+    }
+
+    if (
+      normalized.includes("seconds") ||
+      normalized.includes("duration") ||
+      normalized.includes("how long")
+    ) {
+      const mediaType = normalized.includes("video") ? "video" : "audio";
+      const targetFile = findRelevantFile(question, [mediaType]);
+
+      if (!targetFile) {
+        return {
+          intent: "summary",
+          title: "Media duration",
+          summary: `I could not find a ${mediaType} file in this view to inspect.`,
+          bullets: [
+            `Try opening the ${mediaType} section first or mention the file name directly.`,
+          ],
+        };
+      }
+
+      const duration = await readMediaDuration(targetFile);
+
+      if (duration == null) {
+        return {
+          intent: "summary",
+          title: "Media duration",
+          summary: `I found ${targetFile.name}, but I could not read its duration in the browser.`,
+          bullets: [
+            "This can happen if metadata is missing or the file format does not expose it cleanly.",
+          ],
+        };
+      }
+
+      return {
+        intent: "summary",
+        title: "Media duration",
+        summary: `${targetFile.name} is about ${formatDuration(duration)} long.`,
+        bullets: [
+          `Type: ${targetFile.type}.`,
+          typeof targetFile.size === "number" ? `File size: ${formatBytes(targetFile.size)}.` : "File size is not available.",
+        ],
+      };
+    }
+
+    if (normalized.includes("largest") || normalized.includes("biggest")) {
+      return buildAskAiResult("cleanup");
+    }
+
+    return buildAskAiResult(intent);
+  }
+
+  async function runAskAi(nextQuestion = askAiQuestion) {
+    const question = nextQuestion.trim() || "Summarize this view";
+    setAskAiQuestion(question);
     setIsAskAiOpen(true);
+    setIsAskAiLoading(true);
+
+    try {
+      const result = await answerAskAiQuestion(question);
+      setAskAiResult(result);
+    } finally {
+      setIsAskAiLoading(false);
+    }
   }
 
   function toggleSelectedFile(fileId: Id<"files">) {
@@ -1954,6 +2127,7 @@ export default function DashboardPage() {
           setIsAskAiOpen(isOpen);
           if (!isOpen) {
             setAskAiQuestion("Summarize this view");
+            setIsAskAiLoading(false);
           }
         }}
       >
@@ -1979,7 +2153,7 @@ export default function DashboardPage() {
               <button
                 key={prompt}
                 type="button"
-                onClick={() => runAskAi(prompt)}
+                onClick={() => void runAskAi(prompt)}
                 className="rounded-full border border-zinc-200 bg-white px-3 py-2 text-xs font-medium text-zinc-600 transition hover:border-zinc-300 hover:bg-zinc-50 hover:text-zinc-900 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-300 dark:hover:bg-zinc-800 dark:hover:text-zinc-100"
               >
                 {prompt}
@@ -1990,7 +2164,7 @@ export default function DashboardPage() {
           <form
             onSubmit={(event) => {
               event.preventDefault();
-              runAskAi(askAiQuestion.trim() || "Summarize this view");
+              void runAskAi(askAiQuestion.trim() || "Summarize this view");
             }}
             className="space-y-3"
           >
@@ -2012,7 +2186,9 @@ export default function DashboardPage() {
               <Button type="button" variant="outline" onClick={() => setIsAskAiOpen(false)}>
                 Close
               </Button>
-              <Button type="submit">Ask</Button>
+              <Button type="submit" disabled={isAskAiLoading}>
+                {isAskAiLoading ? "Thinking..." : "Ask"}
+              </Button>
             </div>
           </form>
 
@@ -2026,6 +2202,13 @@ export default function DashboardPage() {
                   {askAiResult?.summary ?? "Run a prompt to get a quick workspace readout."}
                 </p>
               </div>
+
+              {isAskAiLoading ? (
+                <div className="flex items-center gap-2 text-sm text-zinc-500 dark:text-zinc-400">
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  Reading your workspace...
+                </div>
+              ) : null}
 
               {askAiResult?.bullets?.length ? (
                 <ul className="space-y-2 text-sm text-zinc-600 dark:text-zinc-400">
