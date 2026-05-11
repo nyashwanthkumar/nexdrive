@@ -30,6 +30,16 @@ export function Header() {
   const { isSignedIn } = useAuth();
   const pathname = usePathname();
   const showHeaderSignIn = pathname !== "/";
+  const isDashboard = pathname === "/dashboard";
+
+  function openAskAi() {
+    if (isDashboard) {
+      window.dispatchEvent(new CustomEvent("nexdrive:open-ask-ai"));
+      return;
+    }
+
+    window.location.assign("/dashboard");
+  }
 
   return (
     <header className="relative z-50 border-b border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-950">
@@ -46,6 +56,7 @@ export function Header() {
                 type="button"
                 variant="outline"
                 className="h-9 rounded-full px-4"
+                onClick={openAskAi}
               >
                 <Bot className="mr-2 h-4 w-4" />
                 Ask AI

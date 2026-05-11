@@ -21,6 +21,7 @@ import {
   ArrowDownAZ,
   ArrowDownZA,
   ArrowUpDown,
+  Bot,
   Building2,
   Check,
   ChevronDown,
@@ -71,6 +72,13 @@ type ViewType =
   | "activity";
 type DisplayMode = "grid" | "list";
 type SortMode = "newest" | "oldest" | "nameAsc" | "nameDesc";
+type AskAiIntent = "summary" | "duplicates" | "organize" | "cleanup" | "sharing";
+type AskAiResult = {
+  intent: AskAiIntent;
+  title: string;
+  summary: string;
+  bullets: string[];
+};
 
 type FileItem = {
   _id: Id<"files">;
@@ -189,6 +197,9 @@ export default function DashboardPage() {
   const [isBulkWorking, setIsBulkWorking] = useState(false);
   const [isSharesDialogOpen, setIsSharesDialogOpen] = useState(false);
   const [isSortMenuOpen, setIsSortMenuOpen] = useState(false);
+  const [isAskAiOpen, setIsAskAiOpen] = useState(false);
+  const [askAiQuestion, setAskAiQuestion] = useState("Summarize this view");
+  const [askAiResult, setAskAiResult] = useState<AskAiResult | null>(null);
 
   const orgId = organization?.id ?? user?.id;
 
@@ -256,6 +267,16 @@ export default function DashboardPage() {
 
     document.addEventListener("mousedown", handlePointerDown);
     return () => document.removeEventListener("mousedown", handlePointerDown);
+  }, []);
+
+  useEffect(() => {
+    const openAskAi = () => {
+      setIsAskAiOpen(true);
+      setAskAiQuestion("Summarize this view");
+    };
+
+    window.addEventListener("nexdrive:open-ask-ai", openAskAi);
+    return () => window.removeEventListener("nexdrive:open-ask-ai", openAskAi);
   }, []);
 
   const isLoading = activeFiles === undefined || trashFiles === undefined || folders === undefined;
@@ -394,6 +415,150 @@ export default function DashboardPage() {
     if (size < 1024 * 1024) return `${Math.max(1, Math.round(size / 1024))} KB`;
     if (size < 1024 * 1024 * 1024) return `${(size / (1024 * 1024)).toFixed(1)} MB`;
     return `${(size / (1024 * 1024 * 1024)).toFixed(1)} GB`;
+  }
+
+  function detectAskAiIntent(question: string): AskAiIntent {
+    const value = question.toLowerCase();
+    if (value.includes("duplicate")) return "duplicates";
+    if (value.includes("organize") || value.includes("folder")) return "organize";
+    if (value.includes("share") || value.includes("link")) return "sharing";
+    if (value.includes("clean") || value.includes("large") || value.includes("storage")) return "cleanup";
+    return "summary";
+  }
+
+  function buildAskAiResult(intent: AskAiIntent): AskAiResult {
+    const filesForAnalysis = displayedFiles;
+    const foldersForAnalysis = visibleFolders;
+    const dominantTypes = filesForAnalysis.reduce<Record<string, number>>((acc, file) => {
+      acc[file.type] = (acc[file.type] ?? 0) + 1;
+      return acc;
+    }, {});
+    const sortedTypes = Object.entries(dominantTypes).sort((a, b) => b[1] - a[1]);
+    const recentNames = filesForAnalysis.slice(0, 3).map((file) => file.name);
+    const looseFiles = (activeFiles ?? []).filter((file) => !file.folderId);
+    const soonExpiringShares = activeShares.filter((share) => share.expiresAt - Date.now() < 24 * 60 * 60 * 1000);
+    const duplicateGroups = Array.from(
+      filesForAnalysis.reduce<Map<string, FileItem[]>>((groups, file) => {
+        const normalizedName = file.name
+          .toLowerCase()
+          .replace(/\.[^.]+$/, "")
+          .replace(/\s*\(\d+\)$/, "")
+          .replace(/\s+copy$/, "")
+          .trim();
+        const key = `${normalizedName}|${file.type}|${file.size ?? 0}`;
+        groups.set(key, [...(groups.get(key) ?? []), file]);
+        return groups;
+      }, new Map())
+    )
+      .map(([, group]) => group)
+      .filter((group) => group.length > 1);
+    const largestFiles = [...(activeFiles ?? [])]
+      .sort((a, b) => (b.size ?? 0) - (a.size ?? 0))
+      .slice(0, 3);
+
+    if (intent === "duplicates") {
+      return {
+        intent,
+        title: "Possible duplicates",
+        summary:
+          duplicateGroups.length > 0
+            ? `I found ${duplicateGroups.length} duplicate-looking group${duplicateGroups.length === 1 ? "" : "s"} in this view.`
+            : "I do not see obvious duplicate file groups in this view right now.",
+        bullets:
+          duplicateGroups.length > 0
+            ? duplicateGroups.slice(0, 3).map((group) => `${group.length} copies of ${group[0].name}`)
+            : [
+                "File names and sizes in this view look distinct.",
+                "If you want stronger duplicate detection later, we can add content hashing.",
+              ],
+      };
+    }
+
+    if (intent === "organize") {
+      const suggestions = [];
+      if (looseFiles.length > 3) {
+        suggestions.push(`${looseFiles.length} active files are still sitting at the root level.`);
+      }
+      if (sortedTypes.length > 0) {
+        suggestions.push(`The busiest file type right now is ${sortedTypes[0][0]} with ${sortedTypes[0][1]} files.`);
+      }
+      if (foldersForAnalysis.length < 2 && filesForAnalysis.length > 4) {
+        suggestions.push("You would benefit from a few simple folders for images, docs, and shared assets.");
+      }
+
+      return {
+        intent,
+        title: "Organization suggestions",
+        summary:
+          suggestions.length > 0
+            ? "This workspace is in decent shape, but there are a few easy cleanup wins."
+            : "The current view already looks fairly tidy.",
+        bullets:
+          suggestions.length > 0
+            ? suggestions
+            : [
+                "Your files are already grouped reasonably well.",
+                "A next step would be naming folders by project or delivery stage.",
+              ],
+      };
+    }
+
+    if (intent === "cleanup") {
+      return {
+        intent,
+        title: "Cleanup opportunities",
+        summary: `Storage is using ${formatBytes(storageTotal)} of ${formatBytes(storageLimit)} across ${storageStats?.fileCount ?? 0} active files.`,
+        bullets:
+          largestFiles.length > 0
+            ? largestFiles.map((file) => `${file.name} is taking ${formatBytes(file.size ?? 0)}`)
+            : [
+                "There are no active files yet, so there is nothing to clean up.",
+              ],
+      };
+    }
+
+    if (intent === "sharing") {
+      return {
+        intent,
+        title: "Sharing snapshot",
+        summary:
+          activeShares.length > 0
+            ? `You currently have ${activeShares.length} active share link${activeShares.length === 1 ? "" : "s"}.`
+            : "There are no active share links in this workspace right now.",
+        bullets:
+          activeShares.length > 0
+            ? [
+                `${soonExpiringShares.length} share link${soonExpiringShares.length === 1 ? "" : "s"} expire within 24 hours.`,
+                "Open Shares to review or revoke links quickly.",
+              ]
+            : [
+                "Use share links for files that need quick external access.",
+                "Expiry keeps links safer for temporary handoffs.",
+              ],
+      };
+    }
+
+    return {
+      intent: "summary",
+      title: "Workspace summary",
+      summary: `${viewMeta.label} currently shows ${filesForAnalysis.length} file${filesForAnalysis.length === 1 ? "" : "s"} and ${foldersForAnalysis.length} folder${foldersForAnalysis.length === 1 ? "" : "s"}.`,
+      bullets: [
+        sortedTypes.length > 0
+          ? `${sortedTypes[0][0]} is the most common file type in this view.`
+          : "This view does not have files yet.",
+        recentNames.length > 0
+          ? `Recent files here: ${recentNames.join(", ")}.`
+          : "There are no recent files in this view yet.",
+        `You are using ${formatBytes(storageTotal)} of ${formatBytes(storageLimit)} in ${workspaceTitle}.`,
+      ],
+    };
+  }
+
+  function runAskAi(nextQuestion = askAiQuestion) {
+    const intent = detectAskAiIntent(nextQuestion);
+    setAskAiQuestion(nextQuestion);
+    setAskAiResult(buildAskAiResult(intent));
+    setIsAskAiOpen(true);
   }
 
   function toggleSelectedFile(fileId: Id<"files">) {
@@ -1782,6 +1947,141 @@ export default function DashboardPage() {
           </section>
         </div>
       </main>
+
+      <Dialog
+        open={isAskAiOpen}
+        onOpenChange={(isOpen) => {
+          setIsAskAiOpen(isOpen);
+          if (!isOpen) {
+            setAskAiQuestion("Summarize this view");
+          }
+        }}
+      >
+        <DialogContent className="gap-5 p-5 sm:max-w-2xl">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-xl">
+              <Bot className="h-5 w-5" />
+              Ask AI
+            </DialogTitle>
+            <DialogDescription>
+              Get quick help from the current {workspaceTitle} workspace without leaving this view.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="flex flex-wrap gap-2">
+            {[
+              "Summarize this view",
+              "Find possible duplicates",
+              "Suggest better organization",
+              "What should I clean up first?",
+              "Review sharing status",
+            ].map((prompt) => (
+              <button
+                key={prompt}
+                type="button"
+                onClick={() => runAskAi(prompt)}
+                className="rounded-full border border-zinc-200 bg-white px-3 py-2 text-xs font-medium text-zinc-600 transition hover:border-zinc-300 hover:bg-zinc-50 hover:text-zinc-900 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-300 dark:hover:bg-zinc-800 dark:hover:text-zinc-100"
+              >
+                {prompt}
+              </button>
+            ))}
+          </div>
+
+          <form
+            onSubmit={(event) => {
+              event.preventDefault();
+              runAskAi(askAiQuestion.trim() || "Summarize this view");
+            }}
+            className="space-y-3"
+          >
+            <div className="space-y-2">
+              <label htmlFor="ask-ai-question" className="text-sm font-medium text-zinc-700 dark:text-zinc-200">
+                Question
+              </label>
+              <textarea
+                id="ask-ai-question"
+                value={askAiQuestion}
+                onChange={(event) => setAskAiQuestion(event.target.value)}
+                rows={4}
+                placeholder="Ask about this workspace..."
+                className="w-full rounded-2xl border border-zinc-200 bg-white px-4 py-3 text-sm text-zinc-800 outline-none transition focus:border-zinc-400 focus:ring-2 focus:ring-zinc-100 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-100 dark:focus:border-zinc-600 dark:focus:ring-zinc-800"
+              />
+            </div>
+
+            <div className="flex items-center justify-end gap-2">
+              <Button type="button" variant="outline" onClick={() => setIsAskAiOpen(false)}>
+                Close
+              </Button>
+              <Button type="submit">Ask</Button>
+            </div>
+          </form>
+
+          <div className="rounded-2xl border border-zinc-200 bg-zinc-50/80 p-4 dark:border-zinc-800 dark:bg-zinc-900/80">
+            <div className="flex flex-col gap-3">
+              <div>
+                <p className="text-sm font-semibold text-zinc-900 dark:text-zinc-100">
+                  {askAiResult?.title ?? "Workspace summary"}
+                </p>
+                <p className="mt-1 text-sm text-zinc-600 dark:text-zinc-400">
+                  {askAiResult?.summary ?? "Run a prompt to get a quick workspace readout."}
+                </p>
+              </div>
+
+              {askAiResult?.bullets?.length ? (
+                <ul className="space-y-2 text-sm text-zinc-600 dark:text-zinc-400">
+                  {askAiResult.bullets.map((bullet) => (
+                    <li key={bullet} className="flex gap-2">
+                      <span className="mt-1 h-1.5 w-1.5 shrink-0 rounded-full bg-zinc-400 dark:bg-zinc-500" />
+                      <span>{bullet}</span>
+                    </li>
+                  ))}
+                </ul>
+              ) : null}
+
+              {askAiResult ? (
+                <div className="flex flex-wrap gap-2 pt-1">
+                  {askAiResult.intent === "sharing" && (
+                    <Button size="sm" variant="outline" onClick={() => setIsSharesDialogOpen(true)}>
+                      Open shares
+                    </Button>
+                  )}
+                  {askAiResult.intent === "organize" && (
+                    <Button size="sm" variant="outline" onClick={() => setIsFolderDialogOpen(true)}>
+                      Create folder
+                    </Button>
+                  )}
+                  {askAiResult.intent === "summary" && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => {
+                        setActiveView("folders");
+                        setCurrentFolderId(null);
+                        setIsAskAiOpen(false);
+                      }}
+                    >
+                      Open folders
+                    </Button>
+                  )}
+                  {askAiResult.intent === "cleanup" && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => {
+                        setActiveView("trash");
+                        setCurrentFolderId(null);
+                        setIsAskAiOpen(false);
+                      }}
+                    >
+                      Open trash
+                    </Button>
+                  )}
+                </div>
+              ) : null}
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {/* Preview Modal */}
       {previewFile && (
