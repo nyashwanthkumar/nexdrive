@@ -23,6 +23,7 @@ import {
   ArrowUpDown,
   Building2,
   Check,
+  ChevronDown,
   Clock,
   Copy,
   Download,
@@ -187,6 +188,7 @@ export default function DashboardPage() {
   const [isSelectionMode, setIsSelectionMode] = useState(false);
   const [isBulkWorking, setIsBulkWorking] = useState(false);
   const [isSharesDialogOpen, setIsSharesDialogOpen] = useState(false);
+  const [isSortMenuOpen, setIsSortMenuOpen] = useState(false);
 
   const orgId = organization?.id ?? user?.id;
 
@@ -246,6 +248,9 @@ export default function DashboardPage() {
       const target = event.target as HTMLElement;
       if (!target.closest("[data-folder-menu]")) {
         setFolderMenuId(null);
+      }
+      if (!target.closest("[data-sort-menu]")) {
+        setIsSortMenuOpen(false);
       }
     };
 
@@ -377,6 +382,12 @@ export default function DashboardPage() {
     selectableItemCount > 0 &&
     selectableFiles.every((file) => selectedFileIds.includes(file._id)) &&
     selectableFolders.every((folder) => selectedFolderIds.includes(folder._id));
+  const sortLabels: Record<SortMode, string> = {
+    newest: "Newest first",
+    oldest: "Oldest first",
+    nameAsc: "Name A-Z",
+    nameDesc: "Name Z-A",
+  };
 
   function formatBytes(size: number) {
     if (!size) return "0 MB";
@@ -414,6 +425,7 @@ export default function DashboardPage() {
     if (manageableFileIds.length + manageableFolderIds.length > 0 && allFilesSelected && allFoldersSelected) {
       setSelectedFileIds((current) => current.filter((id) => !manageableFileIds.includes(id)));
       setSelectedFolderIds((current) => current.filter((id) => !manageableFolderIds.includes(id)));
+      setIsSelectionMode(false);
       return;
     }
 
@@ -961,14 +973,6 @@ export default function DashboardPage() {
                       >
                         {allVisibleSelected ? "Clear all" : "Select all"}
                       </button>
-                      <button
-                        type="button"
-                        onClick={clearSelection}
-                        className="flex h-8 w-8 items-center justify-center rounded-full text-zinc-400 transition hover:bg-white hover:text-zinc-900 dark:hover:bg-zinc-900 dark:hover:text-zinc-100"
-                        aria-label="Exit selection mode"
-                      >
-                        <X className="h-3.5 w-3.5" />
-                      </button>
                     </div>
                   ) : (
                     <button
@@ -982,26 +986,51 @@ export default function DashboardPage() {
                   )
                 )}
                 <div className="hidden h-6 w-px bg-zinc-200 dark:bg-zinc-800 sm:block" />
-                <div className="flex h-9 items-center gap-2 rounded-xl bg-zinc-100 px-3 text-sm dark:bg-zinc-800">
-                  {sortMode === "nameAsc" ? (
-                    <ArrowDownAZ className="h-4 w-4 text-zinc-500" />
-                  ) : sortMode === "nameDesc" ? (
-                    <ArrowDownZA className="h-4 w-4 text-zinc-500" />
-                  ) : (
-                    <ArrowUpDown className="h-4 w-4 text-zinc-500" />
-                  )}
-                  <select
-                    aria-label="Sort files"
-                    value={sortMode}
-                    onChange={(event) => setSortMode(event.target.value as SortMode)}
-                    style={{ colorScheme: isDarkTheme ? "dark" : "light" }}
-                    className="h-full cursor-pointer bg-transparent text-xs font-medium text-zinc-700 outline-none dark:text-zinc-200"
+                <div data-sort-menu className="relative">
+                  <button
+                    type="button"
+                    onClick={() => setIsSortMenuOpen((open) => !open)}
+                    className="flex h-9 items-center gap-2 rounded-xl bg-zinc-100 px-3 text-sm text-zinc-700 dark:bg-zinc-800 dark:text-zinc-200"
                   >
-                    <option value="newest">Newest first</option>
-                    <option value="oldest">Oldest first</option>
-                    <option value="nameAsc">Name A-Z</option>
-                    <option value="nameDesc">Name Z-A</option>
-                  </select>
+                    {sortMode === "nameAsc" ? (
+                      <ArrowDownAZ className="h-4 w-4 text-zinc-500" />
+                    ) : sortMode === "nameDesc" ? (
+                      <ArrowDownZA className="h-4 w-4 text-zinc-500" />
+                    ) : (
+                      <ArrowUpDown className="h-4 w-4 text-zinc-500" />
+                    )}
+                    <span className="text-xs font-medium">{sortLabels[sortMode]}</span>
+                    <ChevronDown className="h-4 w-4 text-zinc-500" />
+                  </button>
+                  {isSortMenuOpen && (
+                    <div className="absolute right-0 top-11 z-30 min-w-44 overflow-hidden rounded-xl border border-zinc-200 bg-white p-1 shadow-xl dark:border-zinc-800 dark:bg-zinc-900">
+                      {(
+                        [
+                          ["newest", "Newest first"],
+                          ["oldest", "Oldest first"],
+                          ["nameAsc", "Name A-Z"],
+                          ["nameDesc", "Name Z-A"],
+                        ] as [SortMode, string][]
+                      ).map(([value, label]) => (
+                        <button
+                          key={value}
+                          type="button"
+                          onClick={() => {
+                            setSortMode(value);
+                            setIsSortMenuOpen(false);
+                          }}
+                          className={`flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-sm transition ${
+                            sortMode === value
+                              ? "bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-950"
+                              : "text-zinc-700 hover:bg-zinc-100 dark:text-zinc-200 dark:hover:bg-zinc-800"
+                          }`}
+                        >
+                          <span>{label}</span>
+                          {sortMode === value ? <Check className="h-4 w-4" /> : null}
+                        </button>
+                      ))}
+                    </div>
+                  )}
                 </div>
                 <div className="flex h-9 overflow-hidden rounded-xl bg-zinc-100 p-0.5 dark:bg-zinc-800">
                   <button
@@ -1323,19 +1352,6 @@ export default function DashboardPage() {
                     }}
                   >
                     <div className="flex min-w-0 flex-1 items-center gap-3">
-                      <div
-                        className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full border transition ${
-                          selectedFolderIds.includes(folder._id)
-                            ? "border-zinc-900 bg-zinc-900 text-white dark:border-zinc-100 dark:bg-zinc-100 dark:text-zinc-950"
-                            : "border-zinc-300/90 bg-transparent text-transparent dark:border-zinc-600 dark:bg-transparent"
-                        }`}
-                      >
-                        {selectedFolderIds.includes(folder._id) ? (
-                          <Check className="h-3 w-3" />
-                        ) : (
-                          <span className="h-1.5 w-1.5 rounded-full bg-zinc-300 dark:bg-zinc-600" />
-                        )}
-                      </div>
                       <div className="flex min-w-0 flex-1 items-center gap-3 text-left">
                         <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-zinc-100 bg-zinc-50 text-zinc-700 dark:border-zinc-800 dark:bg-zinc-800 dark:text-zinc-200">
                           <FolderOpen className="h-5 w-5" />
@@ -1345,7 +1361,11 @@ export default function DashboardPage() {
                             {folder.name}
                           </p>
                           <p className="text-xs text-zinc-400 dark:text-zinc-500">
-                            {isSelectionMode ? "Select folder" : "Open folder"}
+                            {selectedFolderIds.includes(folder._id)
+                              ? "Selected"
+                              : isSelectionMode
+                              ? "Tap to select folder"
+                              : "Open folder"}
                           </p>
                         </div>
                       </div>
@@ -1422,19 +1442,6 @@ export default function DashboardPage() {
                     }}
                   >
                     <div className="flex min-w-0 flex-1 items-center gap-3">
-                      <div
-                        className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full border transition ${
-                          selectedFileIds.includes(file._id)
-                            ? "border-zinc-900 bg-zinc-900 text-white dark:border-zinc-100 dark:bg-zinc-100 dark:text-zinc-950"
-                            : "border-zinc-300/90 bg-transparent text-transparent dark:border-zinc-600 dark:bg-transparent"
-                        }`}
-                      >
-                        {selectedFileIds.includes(file._id) ? (
-                          <Check className="h-3 w-3" />
-                        ) : (
-                          <span className="h-1.5 w-1.5 rounded-full bg-zinc-300 dark:bg-zinc-600" />
-                        )}
-                      </div>
                       <div className="flex min-w-0 flex-1 items-center gap-3 text-left">
                         <div className="flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-zinc-100 bg-zinc-50 dark:border-zinc-800 dark:bg-zinc-800">
                           {file.type === "image" && file.url ? (
@@ -1454,6 +1461,11 @@ export default function DashboardPage() {
                             {file.name}
                           </p>
                           <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-zinc-400 dark:text-zinc-500">
+                            {selectedFileIds.includes(file._id) && (
+                              <span className="rounded-full bg-zinc-900 px-2 py-0.5 font-medium text-white dark:bg-zinc-100 dark:text-zinc-950">
+                                Selected
+                              </span>
+                            )}
                             <span className="rounded-full bg-zinc-100 px-2 py-0.5 font-medium uppercase tracking-wide dark:bg-zinc-800">
                               {file.type}
                             </span>
