@@ -141,7 +141,7 @@ function FileCardThumbnail({
 }
 
 export default function DashboardPage() {
-  const { isSignedIn, isLoaded } = useAuth();
+  const { isSignedIn, isLoaded, orgId: activeOrgId } = useAuth();
   const router = useRouter();
   const { resolvedTheme, setTheme } = useTheme();
   const { organization } = useOrganization();
@@ -202,7 +202,7 @@ export default function DashboardPage() {
   const [askAiResult, setAskAiResult] = useState<AskAiResult | null>(null);
   const [isAskAiLoading, setIsAskAiLoading] = useState(false);
 
-  const orgId = organization?.id ?? user?.id;
+  const orgId = activeOrgId ?? organization?.id ?? user?.id;
 
   const activeFiles = useQuery(
     api.files.getFiles,
