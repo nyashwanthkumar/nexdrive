@@ -425,7 +425,6 @@ export default function DashboardPage() {
     if (manageableFileIds.length + manageableFolderIds.length > 0 && allFilesSelected && allFoldersSelected) {
       setSelectedFileIds((current) => current.filter((id) => !manageableFileIds.includes(id)));
       setSelectedFolderIds((current) => current.filter((id) => !manageableFolderIds.includes(id)));
-      setIsSelectionMode(false);
       return;
     }
 
@@ -939,7 +938,7 @@ export default function DashboardPage() {
                 <h1 className="text-xl font-semibold tracking-tight text-zinc-950 dark:text-zinc-50">{viewMeta.label}</h1>
                 <p className="mt-0.5 text-xs text-zinc-500 dark:text-zinc-400">{viewMeta.description}</p>
               </div>
-              <div className="flex flex-wrap items-center justify-end gap-2 rounded-2xl border border-zinc-200/80 bg-white/85 p-1.5 shadow-sm shadow-zinc-200/50 backdrop-blur dark:border-zinc-800 dark:bg-zinc-900/85 dark:shadow-none">
+              <div className="relative z-20 flex flex-wrap items-center justify-end gap-2 rounded-2xl border border-zinc-200/80 bg-white/85 p-1.5 shadow-sm shadow-zinc-200/50 backdrop-blur dark:border-zinc-800 dark:bg-zinc-900/85 dark:shadow-none">
                 {!isLoading && toolbarItemCount > 0 && (
                   <span className="hidden rounded-lg bg-zinc-100 px-2.5 py-2 text-xs font-medium text-zinc-500 dark:bg-zinc-800 dark:text-zinc-400 sm:inline-flex">
                     {toolbarItemCount}{" "}
@@ -963,9 +962,13 @@ export default function DashboardPage() {
                 {selectableFiles.length + selectableFolders.length > 0 && (
                   isSelectionMode ? (
                     <div className="flex items-center gap-1.5 rounded-full border border-zinc-200/80 bg-zinc-50/95 px-1.5 py-1 shadow-inner shadow-white/70 dark:border-zinc-800 dark:bg-zinc-950/90 dark:shadow-none">
-                      <span className="flex h-8 items-center rounded-full bg-white px-3.5 text-xs font-medium text-zinc-700 shadow-sm dark:bg-zinc-900 dark:text-zinc-200">
+                      <button
+                        type="button"
+                        onClick={clearSelection}
+                        className="flex h-8 items-center rounded-full bg-white px-3.5 text-xs font-medium text-zinc-700 shadow-sm transition hover:bg-zinc-100 dark:bg-zinc-900 dark:text-zinc-200 dark:hover:bg-zinc-800"
+                      >
                         Selecting
-                      </span>
+                      </button>
                       <button
                         type="button"
                         onClick={toggleSelectAllVisible}
@@ -1003,7 +1006,7 @@ export default function DashboardPage() {
                     <ChevronDown className="h-4 w-4 text-zinc-500" />
                   </button>
                   {isSortMenuOpen && (
-                    <div className="absolute right-0 top-11 z-30 min-w-44 overflow-hidden rounded-xl border border-zinc-200 bg-white p-1 shadow-xl dark:border-zinc-800 dark:bg-zinc-900">
+                    <div className="absolute right-0 top-11 z-[80] min-w-44 overflow-hidden rounded-xl border border-zinc-200 bg-white p-1 shadow-xl dark:border-zinc-800 dark:bg-zinc-900">
                       {(
                         [
                           ["newest", "Newest first"],
@@ -1282,7 +1285,7 @@ export default function DashboardPage() {
                       </span>
                     </div>
                     {activeView === "trash" ? (
-                      <div className="flex shrink-0 items-center gap-2" onClickCapture={(event) => event.stopPropagation()}>
+                      <div className="flex shrink-0 items-center gap-2" onClick={(event) => event.stopPropagation()}>
                         <Button
                           variant="outline"
                           size="sm"
@@ -1304,7 +1307,7 @@ export default function DashboardPage() {
                         </Button>
                       </div>
                     ) : (
-                      <div onClickCapture={(event) => event.stopPropagation()}>
+                      <div onClick={(event) => event.stopPropagation()}>
                         <FolderActionsMenu
                           isFavorite={folder.isFavorite ?? false}
                           isOpen={folderMenuId === folder._id}
@@ -1371,7 +1374,7 @@ export default function DashboardPage() {
                       </div>
                     </div>
                     {activeView === "trash" ? (
-                      <div className="flex shrink-0 items-center gap-2" onClickCapture={(event) => event.stopPropagation()}>
+                      <div className="flex shrink-0 items-center gap-2" onClick={(event) => event.stopPropagation()}>
                         <Button
                           variant="outline"
                           size="sm"
@@ -1393,7 +1396,7 @@ export default function DashboardPage() {
                         </Button>
                       </div>
                     ) : (
-                      <div onClickCapture={(event) => event.stopPropagation()}>
+                      <div onClick={(event) => event.stopPropagation()}>
                         <FolderActionsMenu
                           isFavorite={folder.isFavorite ?? false}
                           isOpen={folderMenuId === folder._id}
@@ -1475,7 +1478,7 @@ export default function DashboardPage() {
                       </div>
                     </div>
 
-                    <div className="flex shrink-0 flex-wrap items-center gap-2 lg:justify-end" onClickCapture={(event) => event.stopPropagation()}>
+                    <div className="flex shrink-0 flex-wrap items-center gap-2 lg:justify-end" onClick={(event) => event.stopPropagation()}>
                       {activeView !== "trash" ? (
                         <div className="flex items-center gap-1 rounded-2xl border border-zinc-200/80 bg-zinc-50/90 p-1 dark:border-zinc-800 dark:bg-zinc-950/80">
                           <Button
@@ -1494,7 +1497,8 @@ export default function DashboardPage() {
                             size="sm"
                             className="h-8 rounded-xl px-2.5 text-zinc-500 hover:bg-white hover:text-zinc-900 dark:hover:bg-zinc-900 dark:hover:text-zinc-100"
                             disabled={!file.url}
-                            onClick={() => {
+                            onClick={(event) => {
+                              event.stopPropagation();
                               setSharingFile(file);
                               setShareDuration("24");
                               setShareUrl("");
@@ -1508,7 +1512,10 @@ export default function DashboardPage() {
                             size="sm"
                             className="h-8 rounded-xl px-2.5 text-zinc-400 hover:bg-white hover:text-zinc-700 dark:hover:bg-zinc-900"
                             disabled={!canManageFile(file)}
-                            onClick={() => openRenameDialog(file)}
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              openRenameDialog(file);
+                            }}
                             title="Rename"
                           >
                             <Pencil className="h-3.5 w-3.5" />
@@ -1518,7 +1525,8 @@ export default function DashboardPage() {
                             size="sm"
                             className="h-8 rounded-xl px-2.5 text-zinc-400 hover:bg-red-50 hover:text-red-500 dark:hover:bg-red-500/10"
                             disabled={!canManageFile(file)}
-                            onClick={async () => {
+                            onClick={async (event) => {
+                              event.stopPropagation();
                               try {
                                 await deleteFile({ fileId: file._id });
                                 toast.success("Moved to trash");
@@ -1538,7 +1546,8 @@ export default function DashboardPage() {
                             size="sm"
                             className="h-8 rounded-lg text-xs"
                             disabled={!canManageFile(file)}
-                            onClick={async () => {
+                            onClick={async (event) => {
+                              event.stopPropagation();
                               try {
                                 await restoreFile({ fileId: file._id });
                                 toast.success("File restored");
@@ -1555,7 +1564,8 @@ export default function DashboardPage() {
                             size="sm"
                             className="h-8 rounded-lg px-3 text-zinc-400 hover:bg-red-50 hover:text-red-500"
                             disabled={!canManageFile(file)}
-                            onClick={async () => {
+                            onClick={async (event) => {
+                              event.stopPropagation();
                               try {
                                 await permanentlyDeleteFile({ fileId: file._id });
                                 toast.success("Permanently deleted");
@@ -1596,9 +1606,8 @@ export default function DashboardPage() {
                     }`}
                   >
                     {selectedFileIds.includes(file._id) && (
-                      <span className="absolute left-3 top-3 z-20 inline-flex h-6 items-center gap-1 rounded-full bg-zinc-900 px-2 text-[11px] font-medium text-white dark:bg-zinc-100 dark:text-zinc-950">
+                      <span className="absolute left-3 top-3 z-20 inline-flex h-6 w-6 items-center justify-center rounded-full bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-950">
                         <Check className="h-3 w-3" />
-                        Selected
                       </span>
                     )}
                     {/* Thumbnail */}
@@ -1659,11 +1668,11 @@ export default function DashboardPage() {
                           </div>
                         </div>
                         <span className="shrink-0 text-[11px] font-medium text-zinc-400 dark:text-zinc-500">
-                          {isSelectionMode ? "Select" : "Open"}
+                          {isSelectionMode ? "" : "Open"}
                         </span>
                       </div>
 
-                      <div className="flex items-center justify-between gap-2" onClickCapture={(event) => event.stopPropagation()}>
+                      <div className="flex items-center justify-between gap-2" onClick={(event) => event.stopPropagation()}>
                         {activeView !== "trash" ? (
                           <div className="flex items-center gap-1 rounded-2xl border border-zinc-200/80 bg-zinc-50/90 p-1 dark:border-zinc-800 dark:bg-zinc-950/80">
                             <Button
@@ -1671,7 +1680,8 @@ export default function DashboardPage() {
                               size="sm"
                               className="h-8 rounded-xl px-2.5 text-zinc-500 hover:bg-white hover:text-zinc-900 dark:hover:bg-zinc-900 dark:hover:text-zinc-100"
                               disabled={!file.url}
-                              onClick={() => {
+                              onClick={(event) => {
+                                event.stopPropagation();
                                 setSharingFile(file);
                                 setShareDuration("24");
                                 setShareUrl("");
@@ -1696,7 +1706,10 @@ export default function DashboardPage() {
                               size="sm"
                               className="h-8 rounded-xl px-2 text-zinc-400 hover:bg-white hover:text-zinc-700 dark:hover:bg-zinc-900"
                               disabled={!canManageFile(file)}
-                              onClick={() => openRenameDialog(file)}
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                openRenameDialog(file);
+                              }}
                               title="Rename"
                             >
                               <Pencil className="h-3.5 w-3.5" />
@@ -1707,7 +1720,8 @@ export default function DashboardPage() {
                               size="sm"
                               className="h-8 rounded-xl px-2 text-zinc-400 hover:bg-red-50 hover:text-red-500 dark:hover:bg-red-500/10"
                               disabled={!canManageFile(file)}
-                              onClick={async () => {
+                              onClick={async (event) => {
+                                event.stopPropagation();
                                 try {
                                   await deleteFile({ fileId: file._id });
                                   toast.success("Moved to trash");
@@ -1727,7 +1741,8 @@ export default function DashboardPage() {
                               size="sm"
                               className="h-7 flex-1 rounded-lg px-2 text-xs"
                               disabled={!canManageFile(file)}
-                              onClick={async () => {
+                              onClick={async (event) => {
+                                event.stopPropagation();
                                 try {
                                   await restoreFile({ fileId: file._id });
                                   toast.success("File restored");
@@ -1744,7 +1759,8 @@ export default function DashboardPage() {
                               size="sm"
                               className="h-7 rounded-lg px-2 text-zinc-400 hover:bg-red-50 hover:text-red-500"
                               disabled={!canManageFile(file)}
-                              onClick={async () => {
+                              onClick={async (event) => {
+                                event.stopPropagation();
                                 try {
                                   await permanentlyDeleteFile({ fileId: file._id });
                                   toast.success("Permanently deleted");
