@@ -16,10 +16,19 @@ function isPersonalWorkspace(orgId: string) {
   return orgId.startsWith("user_");
 }
 
-function canAccessWorkspace(orgId: string, identity: { subject: string; orgId?: string }) {
+function getActiveWorkspaceIds(identity: { subject: string } & Record<string, unknown>) {
+  return [
+    typeof identity.orgId === "string" ? identity.orgId : null,
+    typeof identity.org_id === "string" ? identity.org_id : null,
+    typeof identity.organizationId === "string" ? identity.organizationId : null,
+    typeof identity.organization_id === "string" ? identity.organization_id : null,
+  ].filter((value): value is string => !!value);
+}
+
+function canAccessWorkspace(orgId: string, identity: { subject: string } & Record<string, unknown>) {
   return isPersonalWorkspace(orgId)
     ? orgId === identity.subject
-    : orgId === identity.orgId;
+    : getActiveWorkspaceIds(identity).includes(orgId);
 }
 
 function isFileOwner(file: { userId?: string; orgId: string }, identity: { subject: string }) {
