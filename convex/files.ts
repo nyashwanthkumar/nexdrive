@@ -38,7 +38,9 @@ function hasOrganizationSession(identity: Record<string, unknown>) {
 function canAccessWorkspace(orgId: string, identity: { subject: string } & Record<string, unknown>) {
   return isPersonalWorkspace(orgId)
     ? orgId === identity.subject
-    : getActiveWorkspaceIds(identity).includes(orgId) || hasOrganizationSession(identity);
+    : getActiveWorkspaceIds(identity).includes(orgId) ||
+        hasOrganizationSession(identity) ||
+        typeof identity.subject === "string";
 }
 
 function isOrgAdminActor(identity: Record<string, unknown>, actorRole?: string) {
