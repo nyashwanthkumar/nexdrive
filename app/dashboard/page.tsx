@@ -498,6 +498,95 @@ export default function DashboardPage() {
   }
 
   async function requestRemoteAskAi(question: string) {
+    const directGeminiRequest = async () => {
+      const publicKey = process.env.NEXT_PUBLIC_GEMINI_API_KEY;
+      if (!publicKey) {
+        throw new Error("NEXT_PUBLIC_GEMINI_API_KEY is not configured");
+      }
+
+      const conversation = askAiMessages
+        .slice(-8)
+        .map((message) => `${message.role === "assistant" ? "Assistant" : "User"}: ${message.content}`)
+        .join("\n");
+
+      const prompt = [
+        "You are NexDrive AI, a helpful file workspace assistant inside a product called NexDrive.",
+        "Answer naturally like a real chat assistant, but only use the workspace data below.",
+        "If the user asks for something not present in the data, say that clearly instead of inventing details.",
+        "Be concise, useful, and practical.",
+        "",
+        `Workspace: ${workspaceTitle}`,
+        `Current view: ${viewMeta.label}`,
+        `Visible files: ${displayedFiles.length}`,
+        `Visible folders: ${visibleFolders.length}`,
+        `Active shares: ${activeShares.length}`,
+        `Storage used: ${storageTotal} bytes of ${storageLimit} bytes`,
+        "",
+        "Files:",
+        JSON.stringify(
+          displayedFiles.slice(0, 30).map((file) => ({
+            name: file.name,
+            type: file.type,
+            size: file.size,
+            isFavorite: file.isFavorite ?? false,
+            folderId: file.folderId,
+          }))
+        ),
+        "",
+        "Folders:",
+        JSON.stringify(
+          visibleFolders.slice(0, 20).map((folder) => ({
+            name: folder.name,
+            isFavorite: folder.isFavorite ?? false,
+          }))
+        ),
+        "",
+        "Recent conversation:",
+        conversation || "No previous messages.",
+        "",
+        `Latest user question: ${question}`,
+      ].join("\n");
+
+      const response = await fetch(
+        "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "x-goog-api-key": publicKey,
+          },
+          body: JSON.stringify({
+            contents: [
+              {
+                parts: [{ text: prompt }],
+              },
+            ],
+          }),
+        }
+      );
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(errorText || "Gemini request failed");
+      }
+
+      const payload = (await response.json()) as {
+        candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>;
+      };
+
+      const rawText = (payload.candidates ?? [])
+        .flatMap((candidate) => candidate.content?.parts ?? [])
+        .map((part) => part.text ?? "")
+        .join("\n")
+        .trim();
+
+      if (!rawText) {
+        throw new Error("Gemini returned an empty response");
+      }
+
+      return rawText;
+    };
+
     const response = await fetch("/api/ask-ai", {
       method: "POST",
       headers: {
@@ -514,6 +603,7 @@ export default function DashboardPage() {
         files: displayedFiles.map((file) => ({
           name: file.name,
           type: file.type,
+          url: file.url,
           size: file.size,
           isFavorite: file.isFavorite ?? false,
           folderId: file.folderId,
@@ -530,7 +620,11 @@ export default function DashboardPage() {
 
     if (!response.ok) {
       const errorPayload = (await response.json().catch(() => null)) as { error?: string } | null;
-      throw new Error(errorPayload?.error || "Remote Ask AI is not available");
+      const message = errorPayload?.error || "Remote Ask AI is not available";
+      if (message.includes("GEMINI_API_KEY is not configured")) {
+        return await directGeminiRequest();
+      }
+      throw new Error(message);
     }
 
     const payload = (await response.json()) as {

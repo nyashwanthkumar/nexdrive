@@ -14,6 +14,7 @@ type AskAiRequest = {
   files: Array<{
     name: string;
     type: string;
+    url?: string | null;
     size?: number;
     isFavorite?: boolean;
     folderId?: string;
@@ -59,6 +60,84 @@ async function resolveGeminiApiKey() {
   }
 }
 
+function inferMimeType(file: AskAiRequest["files"][number]) {
+  const lower = file.name.toLowerCase();
+
+  if (file.type === "pdf" || lower.endsWith(".pdf")) return "application/pdf";
+  if (lower.endsWith(".png")) return "image/png";
+  if (lower.endsWith(".webp")) return "image/webp";
+  if (lower.endsWith(".gif")) return "image/gif";
+  if (file.type === "image" || lower.endsWith(".jpg") || lower.endsWith(".jpeg")) return "image/jpeg";
+  if (lower.endsWith(".txt")) return "text/plain";
+  if (lower.endsWith(".csv")) return "text/csv";
+
+  return null;
+}
+
+function pickRelevantFiles(question: string, files: AskAiRequest["files"]) {
+  const normalizedQuestion = question.toLowerCase();
+  const keywords = normalizedQuestion.split(/[^a-z0-9]+/).filter((word) => word.length > 2);
+
+  return [...files]
+    .filter((file) => !!file.url)
+    .map((file) => {
+      const lowerName = file.name.toLowerCase();
+      let score = 0;
+
+      if (keywords.some((keyword) => lowerName.includes(keyword))) score += 5;
+      if (normalizedQuestion.includes("certificate") && lowerName.includes("certificate")) score += 6;
+      if (normalizedQuestion.includes("intern") && lowerName.includes("intern")) score += 6;
+      if (normalizedQuestion.includes("id") && lowerName.includes("id")) score += 3;
+      if (file.type === "pdf") score += 4;
+      if (file.type === "image") score += 3;
+      if (file.type === "document") score += 1;
+      if (typeof file.size === "number" && file.size <= 12 * 1024 * 1024) score += 2;
+
+      return { file, score };
+    })
+    .sort((a, b) => b.score - a.score)
+    .filter((entry) => entry.score > 0)
+    .slice(0, 2)
+    .map((entry) => entry.file);
+}
+
+async function buildFileParts(files: AskAiRequest["files"]) {
+  const parts: Array<Record<string, unknown>> = [];
+
+  for (const file of files) {
+    if (!file.url) continue;
+
+    const mimeType = inferMimeType(file);
+    if (!mimeType) continue;
+
+    const response = await fetch(file.url);
+    if (!response.ok) continue;
+
+    const buffer = Buffer.from(await response.arrayBuffer());
+    const maxInlineBytes = 10 * 1024 * 1024;
+    if (buffer.length > maxInlineBytes) continue;
+
+    if (mimeType.startsWith("text/")) {
+      parts.push({
+        text: `File: ${file.name}\n${buffer.toString("utf8").slice(0, 12000)}`,
+      });
+      continue;
+    }
+
+    parts.push({
+      text: `Attached file: ${file.name}`,
+    });
+    parts.push({
+      inline_data: {
+        mime_type: mimeType,
+        data: buffer.toString("base64"),
+      },
+    });
+  }
+
+  return parts;
+}
+
 export async function POST(request: Request) {
   try {
     await connection();
@@ -76,12 +155,15 @@ export async function POST(request: Request) {
       .slice(-8)
       .map((message) => `${message.role === "assistant" ? "Assistant" : "User"}: ${message.content}`)
       .join("\n");
+    const relevantFiles = pickRelevantFiles(body.question, body.files);
+    const fileParts = await buildFileParts(relevantFiles);
 
     const prompt = [
       "You are NexDrive AI, a helpful file workspace assistant inside a product called NexDrive.",
-      "Answer naturally like a real chat assistant, but only use the workspace data below.",
+      "Answer naturally like a real chat assistant, but only use the workspace data and attached files below.",
       "If the user asks for something not present in the data, say that clearly instead of inventing details.",
       "Be concise, useful, and practical.",
+      "If an attached document or image contains the answer, prefer that over filename guesses.",
       "When helpful, suggest the next action in plain language.",
       "",
       `Workspace: ${body.workspaceTitle}`,
@@ -100,6 +182,10 @@ export async function POST(request: Request) {
       "Recent conversation:",
       conversation || "No previous messages.",
       "",
+      relevantFiles.length > 0
+        ? `Attached relevant files: ${relevantFiles.map((file) => file.name).join(", ")}`
+        : "No relevant file attachments were found for this question.",
+      "",
       `Latest user question: ${body.question}`,
     ].join("\n");
 
@@ -114,7 +200,7 @@ export async function POST(request: Request) {
         body: JSON.stringify({
           contents: [
             {
-              parts: [{ text: prompt }],
+              parts: [{ text: prompt }, ...fileParts],
             },
           ],
         }),
