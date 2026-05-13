@@ -38,9 +38,22 @@ function hasOrganizationSession(identity: Record<string, unknown>) {
 function canAccessWorkspace(orgId: string, identity: { subject: string } & Record<string, unknown>) {
   return isPersonalWorkspace(orgId)
     ? orgId === identity.subject
-    : getActiveWorkspaceIds(identity).includes(orgId) ||
-        hasOrganizationSession(identity) ||
-        typeof identity.subject === "string";
+    : getActiveWorkspaceIds(identity).includes(orgId) || hasOrganizationSession(identity);
+}
+
+function isOrgAdminActor(identity: Record<string, unknown>, actorRole?: string) {
+  return isOrgAdmin(identity.orgRole) || isOrgAdmin(identity.org_role) || isOrgAdmin(actorRole);
+}
+
+function assertOrgAdminForMutation(
+  orgId: string,
+  identity: { subject: string } & Record<string, unknown>,
+  actorRole: string | undefined,
+  message: string
+) {
+  if (!isPersonalWorkspace(orgId) && !isOrgAdminActor(identity, actorRole)) {
+    throw new Error(message);
+  }
 }
 
 function isFileOwner(file: { userId?: string; orgId: string }, identity: { subject: string }) {
@@ -87,6 +100,7 @@ export const createFile = mutation({
     fileId: v.id("_storage"),
     folderId: v.optional(v.id("folders")),
     size: v.optional(v.number()),
+    actorRole: v.optional(v.string()),
     type: v.union(
       v.literal("image"),
       v.literal("pdf"),
@@ -106,6 +120,13 @@ export const createFile = mutation({
     if (!canAccessWorkspace(args.orgId, identity)) {
       throw new Error("You do not have access to this workspace");
     }
+
+    assertOrgAdminForMutation(
+      args.orgId,
+      identity,
+      args.actorRole,
+      "Only organization admins can upload files"
+    );
 
     if (args.folderId) {
       const folder = await ctx.db.get(args.folderId);
@@ -141,6 +162,7 @@ export const createFile = mutation({
 export const deleteFile = mutation({
   args: {
     fileId: v.id("files"),
+    actorRole: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     const identity = await ctx.auth.getUserIdentity();
@@ -157,7 +179,7 @@ export const deleteFile = mutation({
 
     const personalWorkspace = isPersonalWorkspace(file.orgId);
     const owner = isFileOwner(file, identity);
-    const admin = isOrgAdmin(identity.orgRole);
+    const admin = isOrgAdminActor(identity, args.actorRole);
 
     if (!canAccessWorkspace(file.orgId, identity)) {
       throw new Error("You do not have access to this file");
@@ -169,7 +191,7 @@ export const deleteFile = mutation({
       }
     } else {
       if (!admin && !owner) {
-        throw new Error("Only the uploader or organization admin can move files to trash");
+        throw new Error("Only organization admins can move files to trash");
       }
     }
 
@@ -191,6 +213,7 @@ export const deleteFile = mutation({
 export const restoreFile = mutation({
   args: {
     fileId: v.id("files"),
+    actorRole: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     const identity = await ctx.auth.getUserIdentity();
@@ -207,7 +230,7 @@ export const restoreFile = mutation({
 
     const personalWorkspace = isPersonalWorkspace(file.orgId);
     const owner = isFileOwner(file, identity);
-    const admin = isOrgAdmin(identity.orgRole);
+    const admin = isOrgAdminActor(identity, args.actorRole);
 
     if (!canAccessWorkspace(file.orgId, identity)) {
       throw new Error("You do not have access to this file");
@@ -219,7 +242,7 @@ export const restoreFile = mutation({
       }
     } else {
       if (!admin && !owner) {
-        throw new Error("Only the uploader or organization admin can restore files");
+        throw new Error("Only organization admins can restore files");
       }
     }
 
@@ -241,6 +264,7 @@ export const restoreFile = mutation({
 export const permanentlyDeleteFile = mutation({
   args: {
     fileId: v.id("files"),
+    actorRole: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     const identity = await ctx.auth.getUserIdentity();
@@ -257,7 +281,7 @@ export const permanentlyDeleteFile = mutation({
 
     const personalWorkspace = isPersonalWorkspace(file.orgId);
     const owner = isFileOwner(file, identity);
-    const admin = isOrgAdmin(identity.orgRole);
+    const admin = isOrgAdminActor(identity, args.actorRole);
 
     if (!canAccessWorkspace(file.orgId, identity)) {
       throw new Error("You do not have access to this file");
@@ -269,7 +293,7 @@ export const permanentlyDeleteFile = mutation({
       }
     } else {
       if (!admin && !owner) {
-        throw new Error("Only the uploader or organization admin can permanently delete files");
+        throw new Error("Only organization admins can permanently delete files");
       }
     }
 
@@ -281,6 +305,7 @@ export const permanentlyDeleteFile = mutation({
 export const toggleFavorite = mutation({
   args: {
     fileId: v.id("files"),
+    actorRole: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     const identity = await ctx.auth.getUserIdentity();
@@ -299,6 +324,13 @@ export const toggleFavorite = mutation({
       throw new Error("You do not have access to this file");
     }
 
+    assertOrgAdminForMutation(
+      file.orgId,
+      identity,
+      args.actorRole,
+      "Only organization admins can update files"
+    );
+
     await ctx.db.patch(args.fileId, {
       isFavorite: !(file.isFavorite ?? false),
     });
@@ -309,6 +341,7 @@ export const createFolder = mutation({
   args: {
     name: v.string(),
     orgId: v.string(),
+    actorRole: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     const identity = await ctx.auth.getUserIdentity();
@@ -320,6 +353,13 @@ export const createFolder = mutation({
     if (!canAccessWorkspace(args.orgId, identity)) {
       throw new Error("You do not have access to this workspace");
     }
+
+    assertOrgAdminForMutation(
+      args.orgId,
+      identity,
+      args.actorRole,
+      "Only organization admins can create folders"
+    );
 
     const name = args.name.trim();
 
@@ -374,6 +414,7 @@ export const getFolders = query({
 export const toggleFavoriteFolder = mutation({
   args: {
     folderId: v.id("folders"),
+    actorRole: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     const identity = await ctx.auth.getUserIdentity();
@@ -392,6 +433,13 @@ export const toggleFavoriteFolder = mutation({
       throw new Error("You do not have access to this folder");
     }
 
+    assertOrgAdminForMutation(
+      folder.orgId,
+      identity,
+      args.actorRole,
+      "Only organization admins can update folders"
+    );
+
     await ctx.db.patch(args.folderId, {
       isFavorite: !(folder.isFavorite ?? false),
     });
@@ -401,6 +449,7 @@ export const toggleFavoriteFolder = mutation({
 export const deleteFolder = mutation({
   args: {
     folderId: v.id("folders"),
+    actorRole: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     const identity = await ctx.auth.getUserIdentity();
@@ -417,7 +466,7 @@ export const deleteFolder = mutation({
 
     const personalWorkspace = isPersonalWorkspace(folder.orgId);
     const owner = isFolderOwner(folder, identity);
-    const admin = isOrgAdmin(identity.orgRole);
+    const admin = isOrgAdminActor(identity, args.actorRole);
 
     if (!canAccessWorkspace(folder.orgId, identity)) {
       throw new Error("You do not have access to this folder");
@@ -429,7 +478,7 @@ export const deleteFolder = mutation({
       }
     } else {
       if (!admin && !owner) {
-        throw new Error("Only the creator or organization admin can delete folders");
+        throw new Error("Only organization admins can delete folders");
       }
     }
 
@@ -461,6 +510,7 @@ export const deleteFolder = mutation({
 export const restoreFolder = mutation({
   args: {
     folderId: v.id("folders"),
+    actorRole: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     const identity = await ctx.auth.getUserIdentity();
@@ -477,7 +527,7 @@ export const restoreFolder = mutation({
 
     const personalWorkspace = isPersonalWorkspace(folder.orgId);
     const owner = isFolderOwner(folder, identity);
-    const admin = isOrgAdmin(identity.orgRole);
+    const admin = isOrgAdminActor(identity, args.actorRole);
 
     if (!canAccessWorkspace(folder.orgId, identity)) {
       throw new Error("You do not have access to this folder");
@@ -489,7 +539,7 @@ export const restoreFolder = mutation({
       }
     } else {
       if (!admin && !owner) {
-        throw new Error("Only the creator or organization admin can restore folders");
+        throw new Error("Only organization admins can restore folders");
       }
     }
 
@@ -510,6 +560,7 @@ export const restoreFolder = mutation({
 export const permanentlyDeleteFolder = mutation({
   args: {
     folderId: v.id("folders"),
+    actorRole: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     const identity = await ctx.auth.getUserIdentity();
@@ -526,7 +577,7 @@ export const permanentlyDeleteFolder = mutation({
 
     const personalWorkspace = isPersonalWorkspace(folder.orgId);
     const owner = isFolderOwner(folder, identity);
-    const admin = isOrgAdmin(identity.orgRole);
+    const admin = isOrgAdminActor(identity, args.actorRole);
 
     if (!canAccessWorkspace(folder.orgId, identity)) {
       throw new Error("You do not have access to this folder");
@@ -538,7 +589,7 @@ export const permanentlyDeleteFolder = mutation({
       }
     } else {
       if (!admin && !owner) {
-        throw new Error("Only the creator or organization admin can permanently delete folders");
+        throw new Error("Only organization admins can permanently delete folders");
       }
     }
 
@@ -550,6 +601,7 @@ export const renameFile = mutation({
   args: {
     fileId: v.id("files"),
     name: v.string(),
+    actorRole: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     const identity = await ctx.auth.getUserIdentity();
@@ -576,7 +628,7 @@ export const renameFile = mutation({
 
     const personalWorkspace = isPersonalWorkspace(file.orgId);
     const owner = isFileOwner(file, identity);
-    const admin = isOrgAdmin(identity.orgRole);
+    const admin = isOrgAdminActor(identity, args.actorRole);
 
     if (!canAccessWorkspace(file.orgId, identity)) {
       throw new Error("You do not have access to this file");
@@ -588,7 +640,7 @@ export const renameFile = mutation({
       }
     } else {
       if (!admin && !owner) {
-        throw new Error("Only the uploader or organization admin can rename files");
+        throw new Error("Only organization admins can rename files");
       }
     }
 
@@ -610,6 +662,7 @@ export const renameFolder = mutation({
   args: {
     folderId: v.id("folders"),
     name: v.string(),
+    actorRole: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     const identity = await ctx.auth.getUserIdentity();
@@ -636,7 +689,7 @@ export const renameFolder = mutation({
 
     const personalWorkspace = isPersonalWorkspace(folder.orgId);
     const owner = isFolderOwner(folder, identity);
-    const admin = isOrgAdmin(identity.orgRole);
+    const admin = isOrgAdminActor(identity, args.actorRole);
 
     if (!canAccessWorkspace(folder.orgId, identity)) {
       throw new Error("You do not have access to this folder");
@@ -648,7 +701,7 @@ export const renameFolder = mutation({
       }
     } else {
       if (!admin && !owner) {
-        throw new Error("Only the creator or organization admin can rename folders");
+        throw new Error("Only organization admins can rename folders");
       }
     }
 
@@ -663,6 +716,7 @@ export const createShareLink = mutation({
     fileId: v.id("files"),
     token: v.string(),
     expiresAt: v.number(),
+    actorRole: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     const identity = await ctx.auth.getUserIdentity();
@@ -680,6 +734,13 @@ export const createShareLink = mutation({
     if (!canAccessWorkspace(file.orgId, identity)) {
       throw new Error("You do not have access to this file");
     }
+
+    assertOrgAdminForMutation(
+      file.orgId,
+      identity,
+      args.actorRole,
+      "Only organization admins can create share links"
+    );
 
     if (file.shouldDelete) {
       throw new Error("Restore this file before sharing it");
@@ -785,6 +846,7 @@ export const getShareLinks = query({
 export const revokeShareLink = mutation({
   args: {
     shareId: v.id("shareLinks"),
+    actorRole: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     const identity = await ctx.auth.getUserIdentity();
@@ -802,6 +864,13 @@ export const revokeShareLink = mutation({
     if (!canAccessWorkspace(share.orgId, identity)) {
       throw new Error("You do not have access to this share link");
     }
+
+    assertOrgAdminForMutation(
+      share.orgId,
+      identity,
+      args.actorRole,
+      "Only organization admins can revoke share links"
+    );
 
     const file = await ctx.db.get(share.fileId);
 

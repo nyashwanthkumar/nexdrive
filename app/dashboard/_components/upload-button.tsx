@@ -59,8 +59,14 @@ function getFileType(file: File): FileType {
   return "document";
 }
 
-export function UploadButton({ folders = [] }: { folders?: FolderOption[] }) {
-  const { orgId: activeOrgId } = useAuth();
+export function UploadButton({
+  folders = [],
+  disabled = false,
+}: {
+  folders?: FolderOption[];
+  disabled?: boolean;
+}) {
+  const { orgId: activeOrgId, orgRole } = useAuth();
   const { organization } = useOrganization();
   const { user } = useUser();
   const createFile = useMutation(api.files.createFile);
@@ -144,6 +150,7 @@ export function UploadButton({ folders = [] }: { folders?: FolderOption[] }) {
         orgId,
         fileId: storageId,
         size: selectedFile.size,
+        actorRole: orgRole ?? undefined,
         folderId:
           values.folderId === "root"
             ? undefined
@@ -176,6 +183,7 @@ export function UploadButton({ folders = [] }: { folders?: FolderOption[] }) {
       <DialogTrigger asChild>
         <Button
           variant="outline"
+          disabled={disabled}
           className="h-14 w-auto rounded-2xl border-zinc-200 bg-white px-6 text-base font-medium text-zinc-950 shadow-md shadow-zinc-200/80 hover:bg-zinc-50 hover:text-zinc-950 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-50 dark:shadow-none dark:hover:bg-zinc-800"
         >
           <Plus className="mr-2 h-5 w-5" />

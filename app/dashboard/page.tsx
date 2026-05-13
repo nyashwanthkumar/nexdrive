@@ -141,7 +141,7 @@ function FileCardThumbnail({
 }
 
 export default function DashboardPage() {
-  const { isSignedIn, isLoaded, orgId: activeOrgId } = useAuth();
+  const { isSignedIn, isLoaded, orgId: activeOrgId, orgRole } = useAuth();
   const router = useRouter();
   const { resolvedTheme, setTheme } = useTheme();
   const { organization } = useOrganization();
@@ -389,14 +389,17 @@ export default function DashboardPage() {
     );
   }
 
+  const workspaceRole = orgRole ?? userRole ?? null;
+  const isWorkspaceAdmin = workspaceRole === "org:admin" || workspaceRole === "admin";
+  const canManageCurrentWorkspace = !organization || isWorkspaceAdmin;
   const selectedFiles = displayedFiles.filter((file) => selectedFileIds.includes(file._id));
   const selectedFolders = visibleFolders.filter((folder) => selectedFolderIds.includes(folder._id));
   const activeShares = (shareLinks ?? []).filter((share) => !share.isExpired && !share.isRevoked);
   const storageTotal = storageStats?.totalSize ?? 0;
   const storageLimit = 1024 * 1024 * 1024;
   const storagePercent = Math.min(100, Math.round((storageTotal / storageLimit) * 100));
-  const selectableFiles = displayedFiles.filter((file) => activeView === "trash" || canManageFile(file));
-  const selectableFolders = visibleFolders.filter((folder) => activeView === "trash" || canManageFolder(folder));
+  const selectableFiles = displayedFiles.filter((file) => canManageFile(file));
+  const selectableFolders = visibleFolders.filter((folder) => canManageFolder(folder));
   const selectedItemCount = selectedFiles.length + selectedFolders.length;
   const toolbarItemCount = displayedFiles.length + visibleFolders.length;
   const selectableItemCount = selectableFiles.length + selectableFolders.length;
@@ -816,7 +819,7 @@ export default function DashboardPage() {
 
     try {
       setIsRenaming(true);
-      await renameFile({ fileId: renamingFile._id, name: nextName });
+      await renameFile({ fileId: renamingFile._id, name: nextName, actorRole: workspaceRole ?? undefined });
       setRenamingFile(null);
       setRenameValue("");
       toast.success("File renamed");
@@ -846,7 +849,7 @@ export default function DashboardPage() {
 
     try {
       setIsRenamingFolder(true);
-      await renameFolder({ folderId: renamingFolder.id, name: nextName });
+      await renameFolder({ folderId: renamingFolder.id, name: nextName, actorRole: workspaceRole ?? undefined });
       setRenamingFolder(null);
       setFolderRenameValue("");
       toast.success("Folder renamed");
@@ -867,7 +870,7 @@ export default function DashboardPage() {
 
     try {
       setIsCreatingFolder(true);
-      await createFolder({ name: folderName, orgId });
+      await createFolder({ name: folderName, orgId, actorRole: workspaceRole ?? undefined });
       setFolderName("");
       setIsFolderDialogOpen(false);
       toast.success("Folder created");
@@ -882,7 +885,7 @@ export default function DashboardPage() {
     if (!folderPendingDelete) return;
     try {
       setDeletingFolderId(folderPendingDelete.id);
-      await deleteFolder({ folderId: folderPendingDelete.id });
+      await deleteFolder({ folderId: folderPendingDelete.id, actorRole: workspaceRole ?? undefined });
 
       if (currentFolderId === folderPendingDelete.id) {
         setCurrentFolderId(null);
@@ -900,7 +903,7 @@ export default function DashboardPage() {
   async function handleRestoreFolder(folderId: Id<"folders">) {
     try {
       setDeletingFolderId(folderId);
-      await restoreFolder({ folderId });
+      await restoreFolder({ folderId, actorRole: workspaceRole ?? undefined });
       toast.success("Folder restored");
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Failed to restore folder");
@@ -912,7 +915,7 @@ export default function DashboardPage() {
   async function handlePermanentlyDeleteFolder(folderId: Id<"folders">) {
     try {
       setDeletingFolderId(folderId);
-      await permanentlyDeleteFolder({ folderId });
+      await permanentlyDeleteFolder({ folderId, actorRole: workspaceRole ?? undefined });
       toast.success("Folder permanently deleted");
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Failed to delete folder");
@@ -924,7 +927,7 @@ export default function DashboardPage() {
   async function handleToggleFolderFavorite(folderId: Id<"folders">, isFavorite: boolean) {
     try {
       setFolderMenuId(null);
-      await toggleFavoriteFolder({ folderId });
+      await toggleFavoriteFolder({ folderId, actorRole: workspaceRole ?? undefined });
       toast.success(isFavorite ? "Removed from starred" : "Added to starred");
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Failed to update starred folder");
@@ -954,6 +957,7 @@ export default function DashboardPage() {
         fileId: sharingFile._id,
         token,
         expiresAt,
+        actorRole: workspaceRole ?? undefined,
       });
 
       const url = `${window.location.origin}/share/${token}`;
@@ -976,18 +980,18 @@ export default function DashboardPage() {
       for (const folder of selectedFolders) {
         if (!canManageFolder(folder)) continue;
         if (activeView === "trash") {
-          await permanentlyDeleteFolder({ folderId: folder._id });
+          await permanentlyDeleteFolder({ folderId: folder._id, actorRole: workspaceRole ?? undefined });
         } else {
-          await deleteFolder({ folderId: folder._id });
+          await deleteFolder({ folderId: folder._id, actorRole: workspaceRole ?? undefined });
         }
       }
 
       for (const file of selectedFiles) {
         if (!canManageFile(file)) continue;
         if (activeView === "trash") {
-          await permanentlyDeleteFile({ fileId: file._id });
+          await permanentlyDeleteFile({ fileId: file._id, actorRole: workspaceRole ?? undefined });
         } else {
-          await deleteFile({ fileId: file._id });
+          await deleteFile({ fileId: file._id, actorRole: workspaceRole ?? undefined });
         }
       }
 
@@ -1008,13 +1012,13 @@ export default function DashboardPage() {
 
       for (const folder of selectedFolders) {
         if (canManageFolder(folder)) {
-          await restoreFolder({ folderId: folder._id });
+          await restoreFolder({ folderId: folder._id, actorRole: workspaceRole ?? undefined });
         }
       }
 
       for (const file of selectedFiles) {
         if (canManageFile(file)) {
-          await restoreFile({ fileId: file._id });
+          await restoreFile({ fileId: file._id, actorRole: workspaceRole ?? undefined });
         }
       }
 
@@ -1027,19 +1031,18 @@ export default function DashboardPage() {
     }
   }
 
-  const isWorkspaceAdmin = userRole === "org:admin" || userRole === "admin";
   const isDarkTheme = resolvedTheme === "dark";
 
   function canManageFile(file: FileItem) {
     if (!user?.id) return false;
     const owner = (file.userId ?? "") === user.id || file.orgId === user.id;
-    return organization ? isWorkspaceAdmin || owner : owner;
+    return organization ? isWorkspaceAdmin : owner;
   }
 
   function canManageFolder(folder: { orgId: string; userId?: string }) {
     if (!user?.id) return false;
     const owner = (folder.userId ?? "") === user.id || folder.orgId === user.id;
-    return organization ? isWorkspaceAdmin || owner : owner;
+    return organization ? isWorkspaceAdmin : owner;
   }
 
   return (
@@ -1059,7 +1062,7 @@ export default function DashboardPage() {
               >
                 {isMobileNavOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
               </button>
-              <UploadButton folders={folders ?? []} />
+              <UploadButton folders={folders ?? []} disabled={!canManageCurrentWorkspace} />
             </div>
 
             <nav
@@ -1423,6 +1426,7 @@ export default function DashboardPage() {
                 <Button
                   size="sm"
                   className="h-9 rounded-xl"
+                  disabled={!canManageCurrentWorkspace}
                   onClick={() => setIsFolderDialogOpen(true)}
                 >
                   <Plus className="mr-1.5 h-3.5 w-3.5" />
@@ -1824,7 +1828,7 @@ export default function DashboardPage() {
                             variant="ghost"
                             size="sm"
                             className="h-8 rounded-xl px-2.5 text-zinc-400 hover:bg-white hover:text-zinc-700 dark:hover:bg-zinc-900"
-                            disabled={!file.url}
+                            disabled={!file.url || !canManageFile(file)}
                           >
                             <a href={file.url ?? "#"} download={file.name} target="_blank" rel="noreferrer" title="Download">
                               <Download className="h-3.5 w-3.5" />
@@ -1834,7 +1838,7 @@ export default function DashboardPage() {
                             variant="ghost"
                             size="sm"
                             className="h-8 rounded-xl px-2.5 text-zinc-500 hover:bg-white hover:text-zinc-900 dark:hover:bg-zinc-900 dark:hover:text-zinc-100"
-                            disabled={!file.url}
+                            disabled={!file.url || !canManageFile(file)}
                             onClick={(event) => {
                               event.stopPropagation();
                               setSharingFile(file);
@@ -1866,7 +1870,7 @@ export default function DashboardPage() {
                             onClick={async (event) => {
                               event.stopPropagation();
                               try {
-                                await deleteFile({ fileId: file._id });
+                                await deleteFile({ fileId: file._id, actorRole: workspaceRole ?? undefined });
                                 toast.success("Moved to trash");
                               } catch (error) {
                                 toast.error(error instanceof Error ? error.message : "Failed to move to trash");
@@ -1887,7 +1891,7 @@ export default function DashboardPage() {
                             onClick={async (event) => {
                               event.stopPropagation();
                               try {
-                                await restoreFile({ fileId: file._id });
+                                await restoreFile({ fileId: file._id, actorRole: workspaceRole ?? undefined });
                                 toast.success("File restored");
                               } catch (error) {
                                 toast.error(error instanceof Error ? error.message : "Failed to restore");
@@ -1905,7 +1909,7 @@ export default function DashboardPage() {
                             onClick={async (event) => {
                               event.stopPropagation();
                               try {
-                                await permanentlyDeleteFile({ fileId: file._id });
+                                await permanentlyDeleteFile({ fileId: file._id, actorRole: workspaceRole ?? undefined });
                                 toast.success("Permanently deleted");
                               } catch (error) {
                                 toast.error(error instanceof Error ? error.message : "Failed to delete");
@@ -1970,7 +1974,7 @@ export default function DashboardPage() {
                           onClick={async (e) => {
                             e.stopPropagation();
                             try {
-                              await toggleFavorite({ fileId: file._id });
+                              await toggleFavorite({ fileId: file._id, actorRole: workspaceRole ?? undefined });
                               toast.success(
                                 file.isFavorite ? "Removed from favourites" : "Added to favourites"
                               );
@@ -2061,7 +2065,7 @@ export default function DashboardPage() {
                               onClick={async (event) => {
                                 event.stopPropagation();
                                 try {
-                                  await deleteFile({ fileId: file._id });
+                                  await deleteFile({ fileId: file._id, actorRole: workspaceRole ?? undefined });
                                   toast.success("Moved to trash");
                                 } catch (error) {
                                   toast.error(error instanceof Error ? error.message : "Failed to move to trash");
@@ -2082,7 +2086,7 @@ export default function DashboardPage() {
                               onClick={async (event) => {
                                 event.stopPropagation();
                                 try {
-                                  await restoreFile({ fileId: file._id });
+                                  await restoreFile({ fileId: file._id, actorRole: workspaceRole ?? undefined });
                                   toast.success("File restored");
                                 } catch (error) {
                                   toast.error(error instanceof Error ? error.message : "Failed to restore");
@@ -2100,7 +2104,7 @@ export default function DashboardPage() {
                               onClick={async (event) => {
                                 event.stopPropagation();
                                 try {
-                                  await permanentlyDeleteFile({ fileId: file._id });
+                                  await permanentlyDeleteFile({ fileId: file._id, actorRole: workspaceRole ?? undefined });
                                   toast.success("Permanently deleted");
                                 } catch (error) {
                                   toast.error(error instanceof Error ? error.message : "Failed to delete");
@@ -2229,7 +2233,12 @@ export default function DashboardPage() {
                     </Button>
                   )}
                   {askAiResult.intent === "organize" && (
-                    <Button size="sm" variant="outline" onClick={() => setIsFolderDialogOpen(true)}>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      disabled={!canManageCurrentWorkspace}
+                      onClick={() => setIsFolderDialogOpen(true)}
+                    >
                       Create folder
                     </Button>
                   )}
@@ -2471,7 +2480,7 @@ export default function DashboardPage() {
                         type="button"
                         variant="outline"
                         size="sm"
-                        disabled={inactive}
+                        disabled={inactive || !canManageCurrentWorkspace}
                         onClick={async () => {
                           await navigator.clipboard?.writeText(shareUrlValue);
                           toast.success("Link copied");
@@ -2487,7 +2496,7 @@ export default function DashboardPage() {
                         disabled={inactive}
                         onClick={async () => {
                           try {
-                            await revokeShareLink({ shareId: share._id });
+                            await revokeShareLink({ shareId: share._id, actorRole: workspaceRole ?? undefined });
                             toast.success("Share link revoked");
                           } catch (error) {
                             toast.error(error instanceof Error ? error.message : "Failed to revoke link");
