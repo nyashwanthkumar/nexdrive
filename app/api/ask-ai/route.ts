@@ -2,6 +2,10 @@ import { NextResponse } from "next/server";
 
 type AskAiRequest = {
   question: string;
+  messages?: Array<{
+    role: "user" | "assistant";
+    content: string;
+  }>;
   workspaceTitle: string;
   viewLabel: string;
   files: Array<{
@@ -33,42 +37,6 @@ function extractGeminiText(payload: unknown) {
     .trim();
 }
 
-function parseStructuredAnswer(rawText: string) {
-  const sanitized = rawText
-    .trim()
-    .replace(/^```json\s*/i, "")
-    .replace(/^```\s*/i, "")
-    .replace(/```$/i, "")
-    .trim();
-
-  try {
-    const parsed = JSON.parse(sanitized) as {
-      title?: string;
-      summary?: string;
-      bullets?: string[];
-    };
-
-    return {
-      title: parsed.title?.trim() || "Ask AI",
-      summary: parsed.summary?.trim() || sanitized,
-      bullets: Array.isArray(parsed.bullets)
-        ? parsed.bullets.map((bullet) => bullet.trim()).filter(Boolean).slice(0, 5)
-        : [],
-    };
-  } catch {
-    const lines = sanitized
-      .split("\n")
-      .map((line) => line.replace(/^[-*]\s*/, "").trim())
-      .filter(Boolean);
-
-    return {
-      title: "Ask AI",
-      summary: lines[0] ?? sanitized ?? "No response returned.",
-      bullets: lines.slice(1, 6),
-    };
-  }
-}
-
 export async function POST(request: Request) {
   try {
     const body = (await request.json()) as AskAiRequest;
@@ -81,12 +49,17 @@ export async function POST(request: Request) {
       );
     }
 
+    const conversation = (body.messages ?? [])
+      .slice(-8)
+      .map((message) => `${message.role === "assistant" ? "Assistant" : "User"}: ${message.content}`)
+      .join("\n");
+
     const prompt = [
-      "You are NexDrive AI, a concise workspace assistant.",
-      "Answer the user's question using only the workspace data below.",
-      "If the question asks for something not present in the data, say that clearly instead of inventing details.",
-      'Return strict JSON with exactly these keys: "title", "summary", "bullets".',
-      '"title" should be short. "summary" should be 1-3 sentences. "bullets" should be an array of up to 5 short strings.',
+      "You are NexDrive AI, a helpful file workspace assistant inside a product called NexDrive.",
+      "Answer naturally like a real chat assistant, but only use the workspace data below.",
+      "If the user asks for something not present in the data, say that clearly instead of inventing details.",
+      "Be concise, useful, and practical.",
+      "When helpful, suggest the next action in plain language.",
       "",
       `Workspace: ${body.workspaceTitle}`,
       `Current view: ${body.viewLabel}`,
@@ -101,7 +74,10 @@ export async function POST(request: Request) {
       "Folders:",
       JSON.stringify(body.folders.slice(0, 20)),
       "",
-      `User question: ${body.question}`,
+      "Recent conversation:",
+      conversation || "No previous messages.",
+      "",
+      `Latest user question: ${body.question}`,
     ].join("\n");
 
     const response = await fetch(
@@ -140,7 +116,7 @@ export async function POST(request: Request) {
       );
     }
 
-    return NextResponse.json(parseStructuredAnswer(rawText));
+    return NextResponse.json({ message: rawText });
   } catch (error) {
     return NextResponse.json(
       {

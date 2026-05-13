@@ -79,6 +79,12 @@ type AskAiResult = {
   summary: string;
   bullets: string[];
 };
+type AskAiChatMessage = {
+  id: string;
+  role: "user" | "assistant";
+  content: string;
+  intent?: AskAiIntent;
+};
 
 type FileItem = {
   _id: Id<"files">;
@@ -198,8 +204,8 @@ export default function DashboardPage() {
   const [isSharesDialogOpen, setIsSharesDialogOpen] = useState(false);
   const [isSortMenuOpen, setIsSortMenuOpen] = useState(false);
   const [isAskAiOpen, setIsAskAiOpen] = useState(false);
-  const [askAiQuestion, setAskAiQuestion] = useState("Summarize this view");
-  const [askAiResult, setAskAiResult] = useState<AskAiResult | null>(null);
+  const [askAiQuestion, setAskAiQuestion] = useState("");
+  const [askAiMessages, setAskAiMessages] = useState<AskAiChatMessage[]>([]);
   const [isAskAiLoading, setIsAskAiLoading] = useState(false);
 
   const orgId = activeOrgId ?? organization?.id ?? user?.id;
@@ -273,7 +279,7 @@ export default function DashboardPage() {
   useEffect(() => {
     const openAskAi = () => {
       setIsAskAiOpen(true);
-      setAskAiQuestion("Summarize this view");
+      setAskAiQuestion("");
     };
 
     window.addEventListener("nexdrive:open-ask-ai", openAskAi);
@@ -413,6 +419,8 @@ export default function DashboardPage() {
     nameAsc: "Name A-Z",
     nameDesc: "Name Z-A",
   };
+  const lastAssistantMessage =
+    [...askAiMessages].reverse().find((message) => message.role === "assistant") ?? null;
 
   function formatBytes(size: number) {
     if (!size) return "0 MB";
@@ -430,6 +438,15 @@ export default function DashboardPage() {
 
   function normalizeQuestion(value: string) {
     return value.toLowerCase().replace(/[^\w\s.]/g, " ").replace(/\s+/g, " ").trim();
+  }
+
+  function createAskAiMessage(role: "user" | "assistant", content: string, intent?: AskAiIntent): AskAiChatMessage {
+    const id =
+      typeof crypto !== "undefined" && "randomUUID" in crypto
+        ? crypto.randomUUID()
+        : `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+
+    return { id, role, content, intent };
   }
 
   function findRelevantFile(question: string, allowedTypes?: string[]) {
@@ -731,6 +748,10 @@ export default function DashboardPage() {
       },
       body: JSON.stringify({
         question,
+        messages: askAiMessages.map((message) => ({
+          role: message.role,
+          content: message.content,
+        })),
         workspaceTitle,
         viewLabel: viewMeta.label,
         files: displayedFiles.map((file) => ({
@@ -755,35 +776,39 @@ export default function DashboardPage() {
     }
 
     const payload = (await response.json()) as {
-      title?: string;
-      summary?: string;
-      bullets?: string[];
+      message?: string;
     };
 
-    return {
-      intent: detectAskAiIntent(question),
-      title: payload.title?.trim() || "Ask AI",
-      summary: payload.summary?.trim() || "No answer returned.",
-      bullets: Array.isArray(payload.bullets) ? payload.bullets.filter(Boolean) : [],
-    } satisfies AskAiResult;
+    return payload.message?.trim() || "I could not generate a response just now.";
   }
 
   async function runAskAi(nextQuestion = askAiQuestion) {
     const question = nextQuestion.trim() || "Summarize this view";
-    setAskAiQuestion(question);
     setIsAskAiOpen(true);
     setIsAskAiLoading(true);
+    const userMessage = createAskAiMessage("user", question);
+    setAskAiMessages((current) => [...current, userMessage]);
+    setAskAiQuestion("");
 
     try {
-      let result: AskAiResult;
+      let assistantMessage = "";
+      let localResult: AskAiResult | null = null;
 
       try {
-        result = await requestRemoteAskAi(question);
+        assistantMessage = await requestRemoteAskAi(question);
       } catch {
-        result = await answerAskAiQuestion(question);
+        localResult = await answerAskAiQuestion(question);
+        assistantMessage = [
+          localResult.summary,
+          ...localResult.bullets.map((bullet) => `• ${bullet}`),
+        ]
+          .filter(Boolean)
+          .join("\n");
       }
-
-      setAskAiResult(result);
+      setAskAiMessages((current) => [
+        ...current,
+        createAskAiMessage("assistant", assistantMessage, localResult?.intent ?? detectAskAiIntent(question)),
+      ]);
     } finally {
       setIsAskAiLoading(false);
     }
@@ -2182,12 +2207,12 @@ export default function DashboardPage() {
         onOpenChange={(isOpen) => {
           setIsAskAiOpen(isOpen);
           if (!isOpen) {
-            setAskAiQuestion("Summarize this view");
+            setAskAiQuestion("");
             setIsAskAiLoading(false);
           }
         }}
       >
-        <DialogContent className="gap-5 p-5 sm:max-w-2xl">
+        <DialogContent className="gap-5 p-5 sm:max-w-3xl">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2 text-xl">
               <Bot className="h-5 w-5" />
@@ -2217,6 +2242,88 @@ export default function DashboardPage() {
             ))}
           </div>
 
+          <div className="rounded-2xl border border-zinc-200 bg-zinc-50/70 p-3 dark:border-zinc-800 dark:bg-zinc-900/70">
+            <div className="max-h-[420px] space-y-3 overflow-y-auto pr-1">
+              {askAiMessages.length === 0 ? (
+                <div className="rounded-2xl border border-dashed border-zinc-200 bg-white/80 px-4 py-5 text-sm text-zinc-500 dark:border-zinc-800 dark:bg-zinc-950/70 dark:text-zinc-400">
+                  Ask about files, folders, duplicates, storage, sharing, durations, or how to organize this workspace.
+                </div>
+              ) : (
+                askAiMessages.map((message) => (
+                  <div
+                    key={message.id}
+                    className={`flex ${message.role === "user" ? "justify-end" : "justify-start"}`}
+                  >
+                    <div
+                      className={`max-w-[85%] rounded-2xl px-4 py-3 text-sm whitespace-pre-wrap ${
+                        message.role === "user"
+                          ? "bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-950"
+                          : "border border-zinc-200 bg-white text-zinc-700 dark:border-zinc-800 dark:bg-zinc-950 dark:text-zinc-200"
+                      }`}
+                    >
+                      {message.content}
+                    </div>
+                  </div>
+                ))
+              )}
+
+              {isAskAiLoading ? (
+                <div className="flex justify-start">
+                  <div className="flex items-center gap-2 rounded-2xl border border-zinc-200 bg-white px-4 py-3 text-sm text-zinc-500 dark:border-zinc-800 dark:bg-zinc-950 dark:text-zinc-400">
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Thinking...
+                  </div>
+                </div>
+              ) : null}
+            </div>
+          </div>
+
+          {lastAssistantMessage ? (
+            <div className="flex flex-wrap gap-2">
+              {lastAssistantMessage.intent === "sharing" && (
+                <Button size="sm" variant="outline" onClick={() => setIsSharesDialogOpen(true)}>
+                  Open shares
+                </Button>
+              )}
+              {lastAssistantMessage.intent === "organize" && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={!canManageCurrentWorkspace}
+                  onClick={() => setIsFolderDialogOpen(true)}
+                >
+                  Create folder
+                </Button>
+              )}
+              {lastAssistantMessage.intent === "summary" && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => {
+                    setActiveView("folders");
+                    setCurrentFolderId(null);
+                    setIsAskAiOpen(false);
+                  }}
+                >
+                  Open folders
+                </Button>
+              )}
+              {lastAssistantMessage.intent === "cleanup" && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => {
+                    setActiveView("trash");
+                    setCurrentFolderId(null);
+                    setIsAskAiOpen(false);
+                  }}
+                >
+                  Open trash
+                </Button>
+              )}
+            </div>
+          ) : null}
+
           <form
             onSubmit={(event) => {
               event.preventDefault();
@@ -2224,106 +2331,34 @@ export default function DashboardPage() {
             }}
             className="space-y-3"
           >
-            <div className="space-y-2">
-              <label htmlFor="ask-ai-question" className="text-sm font-medium text-zinc-700 dark:text-zinc-200">
-                Question
-              </label>
-              <textarea
-                id="ask-ai-question"
-                value={askAiQuestion}
-                onChange={(event) => setAskAiQuestion(event.target.value)}
-                rows={4}
-                placeholder="Ask about this workspace..."
-                className="w-full rounded-2xl border border-zinc-200 bg-white px-4 py-3 text-sm text-zinc-800 outline-none transition focus:border-zinc-400 focus:ring-2 focus:ring-zinc-100 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-100 dark:focus:border-zinc-600 dark:focus:ring-zinc-800"
-              />
-            </div>
+            <textarea
+              id="ask-ai-question"
+              value={askAiQuestion}
+              onChange={(event) => setAskAiQuestion(event.target.value)}
+              rows={3}
+              placeholder="Ask follow-up questions about this workspace..."
+              className="w-full rounded-2xl border border-zinc-200 bg-white px-4 py-3 text-sm text-zinc-800 outline-none transition focus:border-zinc-400 focus:ring-2 focus:ring-zinc-100 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-100 dark:focus:border-zinc-600 dark:focus:ring-zinc-800"
+            />
 
-            <div className="flex items-center justify-end gap-2">
-              <Button type="button" variant="outline" onClick={() => setIsAskAiOpen(false)}>
-                Close
+            <div className="flex items-center justify-between gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setAskAiMessages([])}
+                disabled={isAskAiLoading || askAiMessages.length === 0}
+              >
+                Clear chat
               </Button>
-              <Button type="submit" disabled={isAskAiLoading}>
-                {isAskAiLoading ? "Thinking..." : "Ask"}
-              </Button>
+              <div className="flex items-center gap-2">
+                <Button type="button" variant="outline" onClick={() => setIsAskAiOpen(false)}>
+                  Close
+                </Button>
+                <Button type="submit" disabled={isAskAiLoading}>
+                  {isAskAiLoading ? "Thinking..." : "Send"}
+                </Button>
+              </div>
             </div>
           </form>
-
-          <div className="rounded-2xl border border-zinc-200 bg-zinc-50/80 p-4 dark:border-zinc-800 dark:bg-zinc-900/80">
-            <div className="flex flex-col gap-3">
-              <div>
-                <p className="text-sm font-semibold text-zinc-900 dark:text-zinc-100">
-                  {askAiResult?.title ?? "Workspace summary"}
-                </p>
-                <p className="mt-1 text-sm text-zinc-600 dark:text-zinc-400">
-                  {askAiResult?.summary ?? "Run a prompt to get a quick workspace readout."}
-                </p>
-              </div>
-
-              {isAskAiLoading ? (
-                <div className="flex items-center gap-2 text-sm text-zinc-500 dark:text-zinc-400">
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                  Reading your workspace...
-                </div>
-              ) : null}
-
-              {askAiResult?.bullets?.length ? (
-                <ul className="space-y-2 text-sm text-zinc-600 dark:text-zinc-400">
-                  {askAiResult.bullets.map((bullet) => (
-                    <li key={bullet} className="flex gap-2">
-                      <span className="mt-1 h-1.5 w-1.5 shrink-0 rounded-full bg-zinc-400 dark:bg-zinc-500" />
-                      <span>{bullet}</span>
-                    </li>
-                  ))}
-                </ul>
-              ) : null}
-
-              {askAiResult ? (
-                <div className="flex flex-wrap gap-2 pt-1">
-                  {askAiResult.intent === "sharing" && (
-                    <Button size="sm" variant="outline" onClick={() => setIsSharesDialogOpen(true)}>
-                      Open shares
-                    </Button>
-                  )}
-                  {askAiResult.intent === "organize" && (
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      disabled={!canManageCurrentWorkspace}
-                      onClick={() => setIsFolderDialogOpen(true)}
-                    >
-                      Create folder
-                    </Button>
-                  )}
-                  {askAiResult.intent === "summary" && (
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => {
-                        setActiveView("folders");
-                        setCurrentFolderId(null);
-                        setIsAskAiOpen(false);
-                      }}
-                    >
-                      Open folders
-                    </Button>
-                  )}
-                  {askAiResult.intent === "cleanup" && (
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => {
-                        setActiveView("trash");
-                        setCurrentFolderId(null);
-                        setIsAskAiOpen(false);
-                      }}
-                    >
-                      Open trash
-                    </Button>
-                  )}
-                </div>
-              ) : null}
-            </div>
-          </div>
         </DialogContent>
       </Dialog>
 
