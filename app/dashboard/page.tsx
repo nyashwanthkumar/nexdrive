@@ -772,7 +772,8 @@ export default function DashboardPage() {
     });
 
     if (!response.ok) {
-      throw new Error("Remote Ask AI is not available");
+      const errorPayload = (await response.json().catch(() => null)) as { error?: string } | null;
+      throw new Error(errorPayload?.error || "Remote Ask AI is not available");
     }
 
     const payload = (await response.json()) as {
@@ -794,16 +795,30 @@ export default function DashboardPage() {
       let assistantMessage = "";
       let localResult: AskAiResult | null = null;
 
+      const looksLikeQuickWorkspacePrompt =
+        question === "Summarize this view" ||
+        question === "Find possible duplicates" ||
+        question === "Suggest better organization" ||
+        question === "What should I clean up first?" ||
+        question === "Review sharing status";
+
       try {
         assistantMessage = await requestRemoteAskAi(question);
-      } catch {
-        localResult = await answerAskAiQuestion(question);
-        assistantMessage = [
-          localResult.summary,
-          ...localResult.bullets.map((bullet) => `• ${bullet}`),
-        ]
-          .filter(Boolean)
-          .join("\n");
+      } catch (error) {
+        if (looksLikeQuickWorkspacePrompt) {
+          localResult = await answerAskAiQuestion(question);
+          assistantMessage = [
+            localResult.summary,
+            ...localResult.bullets.map((bullet) => `• ${bullet}`),
+          ]
+            .filter(Boolean)
+            .join("\n");
+        } else {
+          assistantMessage =
+            error instanceof Error
+              ? `I could not reach the AI service.\n\n${error.message}\n\nIf you just added GEMINI_API_KEY, restart the dev server once and try again.`
+              : "I could not reach the AI service. Restart the dev server and try again.";
+        }
       }
       setAskAiMessages((current) => [
         ...current,

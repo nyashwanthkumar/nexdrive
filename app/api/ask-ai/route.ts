@@ -1,3 +1,4 @@
+import { connection } from "next/server";
 import { NextResponse } from "next/server";
 
 type AskAiRequest = {
@@ -39,6 +40,7 @@ function extractGeminiText(payload: unknown) {
 
 export async function POST(request: Request) {
   try {
+    await connection();
     const body = (await request.json()) as AskAiRequest;
     const apiKey = process.env.GEMINI_API_KEY;
 
