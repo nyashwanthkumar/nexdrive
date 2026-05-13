@@ -72,18 +72,10 @@ type ViewType =
   | "activity";
 type DisplayMode = "grid" | "list";
 type SortMode = "newest" | "oldest" | "nameAsc" | "nameDesc";
-type AskAiIntent = "summary" | "duplicates" | "organize" | "cleanup" | "sharing";
-type AskAiResult = {
-  intent: AskAiIntent;
-  title: string;
-  summary: string;
-  bullets: string[];
-};
 type AskAiChatMessage = {
   id: string;
   role: "user" | "assistant";
   content: string;
-  intent?: AskAiIntent;
 };
 
 type FileItem = {
@@ -419,9 +411,6 @@ export default function DashboardPage() {
     nameAsc: "Name A-Z",
     nameDesc: "Name Z-A",
   };
-  const lastAssistantMessage =
-    [...askAiMessages].reverse().find((message) => message.role === "assistant") ?? null;
-
   function formatBytes(size: number) {
     if (!size) return "0 MB";
     if (size < 1024 * 1024) return `${Math.max(1, Math.round(size / 1024))} KB`;
@@ -440,13 +429,13 @@ export default function DashboardPage() {
     return value.toLowerCase().replace(/[^\w\s.]/g, " ").replace(/\s+/g, " ").trim();
   }
 
-  function createAskAiMessage(role: "user" | "assistant", content: string, intent?: AskAiIntent): AskAiChatMessage {
+  function createAskAiMessage(role: "user" | "assistant", content: string): AskAiChatMessage {
     const id =
       typeof crypto !== "undefined" && "randomUUID" in crypto
         ? crypto.randomUUID()
         : `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 
-    return { id, role, content, intent };
+    return { id, role, content };
   }
 
   function findRelevantFile(question: string, allowedTypes?: string[]) {
@@ -508,238 +497,6 @@ export default function DashboardPage() {
     });
   }
 
-  function detectAskAiIntent(question: string): AskAiIntent {
-    const value = question.toLowerCase();
-    if (value.includes("duplicate")) return "duplicates";
-    if (value.includes("organize") || value.includes("folder")) return "organize";
-    if (value.includes("share") || value.includes("link")) return "sharing";
-    if (value.includes("clean") || value.includes("large") || value.includes("storage")) return "cleanup";
-    return "summary";
-  }
-
-  function buildAskAiResult(intent: AskAiIntent): AskAiResult {
-    const filesForAnalysis = displayedFiles;
-    const foldersForAnalysis = visibleFolders;
-    const dominantTypes = filesForAnalysis.reduce<Record<string, number>>((acc, file) => {
-      acc[file.type] = (acc[file.type] ?? 0) + 1;
-      return acc;
-    }, {});
-    const sortedTypes = Object.entries(dominantTypes).sort((a, b) => b[1] - a[1]);
-    const recentNames = filesForAnalysis.slice(0, 3).map((file) => file.name);
-    const looseFiles = (activeFiles ?? []).filter((file) => !file.folderId);
-    const soonExpiringShares = activeShares.filter((share) => share.expiresAt - Date.now() < 24 * 60 * 60 * 1000);
-    const duplicateGroups = Array.from(
-      filesForAnalysis.reduce<Map<string, FileItem[]>>((groups, file) => {
-        const normalizedName = file.name
-          .toLowerCase()
-          .replace(/\.[^.]+$/, "")
-          .replace(/\s*\(\d+\)$/, "")
-          .replace(/\s+copy$/, "")
-          .trim();
-        const key = `${normalizedName}|${file.type}|${file.size ?? 0}`;
-        groups.set(key, [...(groups.get(key) ?? []), file]);
-        return groups;
-      }, new Map())
-    )
-      .map(([, group]) => group)
-      .filter((group) => group.length > 1);
-    const largestFiles = [...(activeFiles ?? [])]
-      .sort((a, b) => (b.size ?? 0) - (a.size ?? 0))
-      .slice(0, 3);
-
-    if (intent === "duplicates") {
-      return {
-        intent,
-        title: "Possible duplicates",
-        summary:
-          duplicateGroups.length > 0
-            ? `I found ${duplicateGroups.length} duplicate-looking group${duplicateGroups.length === 1 ? "" : "s"} in this view.`
-            : "I do not see obvious duplicate file groups in this view right now.",
-        bullets:
-          duplicateGroups.length > 0
-            ? duplicateGroups.slice(0, 3).map((group) => `${group.length} copies of ${group[0].name}`)
-            : [
-                "File names and sizes in this view look distinct.",
-                "If you want stronger duplicate detection later, we can add content hashing.",
-              ],
-      };
-    }
-
-    if (intent === "organize") {
-      const suggestions = [];
-      if (looseFiles.length > 3) {
-        suggestions.push(`${looseFiles.length} active files are still sitting at the root level.`);
-      }
-      if (sortedTypes.length > 0) {
-        suggestions.push(`The busiest file type right now is ${sortedTypes[0][0]} with ${sortedTypes[0][1]} files.`);
-      }
-      if (foldersForAnalysis.length < 2 && filesForAnalysis.length > 4) {
-        suggestions.push("You would benefit from a few simple folders for images, docs, and shared assets.");
-      }
-
-      return {
-        intent,
-        title: "Organization suggestions",
-        summary:
-          suggestions.length > 0
-            ? "This workspace is in decent shape, but there are a few easy cleanup wins."
-            : "The current view already looks fairly tidy.",
-        bullets:
-          suggestions.length > 0
-            ? suggestions
-            : [
-                "Your files are already grouped reasonably well.",
-                "A next step would be naming folders by project or delivery stage.",
-              ],
-      };
-    }
-
-    if (intent === "cleanup") {
-      return {
-        intent,
-        title: "Cleanup opportunities",
-        summary: `Storage is using ${formatBytes(storageTotal)} of ${formatBytes(storageLimit)} across ${storageStats?.fileCount ?? 0} active files.`,
-        bullets:
-          largestFiles.length > 0
-            ? largestFiles.map((file) => `${file.name} is taking ${formatBytes(file.size ?? 0)}`)
-            : [
-                "There are no active files yet, so there is nothing to clean up.",
-              ],
-      };
-    }
-
-    if (intent === "sharing") {
-      return {
-        intent,
-        title: "Sharing snapshot",
-        summary:
-          activeShares.length > 0
-            ? `You currently have ${activeShares.length} active share link${activeShares.length === 1 ? "" : "s"}.`
-            : "There are no active share links in this workspace right now.",
-        bullets:
-          activeShares.length > 0
-            ? [
-                `${soonExpiringShares.length} share link${soonExpiringShares.length === 1 ? "" : "s"} expire within 24 hours.`,
-                "Open Shares to review or revoke links quickly.",
-              ]
-            : [
-                "Use share links for files that need quick external access.",
-                "Expiry keeps links safer for temporary handoffs.",
-              ],
-      };
-    }
-
-    return {
-      intent: "summary",
-      title: "Workspace summary",
-      summary: `${viewMeta.label} currently shows ${filesForAnalysis.length} file${filesForAnalysis.length === 1 ? "" : "s"} and ${foldersForAnalysis.length} folder${foldersForAnalysis.length === 1 ? "" : "s"}.`,
-      bullets: [
-        sortedTypes.length > 0
-          ? `${sortedTypes[0][0]} is the most common file type in this view.`
-          : "This view does not have files yet.",
-        recentNames.length > 0
-          ? `Recent files here: ${recentNames.join(", ")}.`
-          : "There are no recent files in this view yet.",
-        `You are using ${formatBytes(storageTotal)} of ${formatBytes(storageLimit)} in ${workspaceTitle}.`,
-      ],
-    };
-  }
-
-  async function answerAskAiQuestion(question: string): Promise<AskAiResult> {
-    const normalized = normalizeQuestion(question);
-    const intent = detectAskAiIntent(question);
-
-    if (
-      normalized.includes("how many") ||
-      normalized.includes("count") ||
-      normalized.includes("number of")
-    ) {
-      const typeMatchers: Array<[string, string[]]> = [
-        ["audio", ["audio", "music", "song"]],
-        ["video", ["video", "videos"]],
-        ["image", ["image", "images", "photo", "photos"]],
-        ["pdf", ["pdf", "pdfs"]],
-        ["document", ["document", "documents", "doc", "docs"]],
-        ["spreadsheet", ["spreadsheet", "spreadsheets", "sheet", "sheets"]],
-      ];
-      const match = typeMatchers.find(([, terms]) => terms.some((term) => normalized.includes(term)));
-
-      if (normalized.includes("folder")) {
-        return {
-          intent: "summary",
-          title: "Folder count",
-          summary: `There ${visibleFolders.length === 1 ? "is" : "are"} ${visibleFolders.length} folder${visibleFolders.length === 1 ? "" : "s"} in this view.`,
-          bullets: [
-            currentFolderId ? "You are looking inside a specific folder." : "This count is for the current workspace view.",
-          ],
-        };
-      }
-
-      if (match) {
-        const [type] = match;
-        const count = displayedFiles.filter((file) => file.type === type || (type === "document" && ["document", "spreadsheet"].includes(file.type))).length;
-        return {
-          intent: "summary",
-          title: "File count",
-          summary: `There ${count === 1 ? "is" : "are"} ${count} ${type}${count === 1 ? "" : "s"} in this view.`,
-          bullets: [
-            `Current view: ${viewMeta.label}.`,
-            `Total visible files: ${displayedFiles.length}.`,
-          ],
-        };
-      }
-    }
-
-    if (
-      normalized.includes("seconds") ||
-      normalized.includes("duration") ||
-      normalized.includes("how long")
-    ) {
-      const mediaType = normalized.includes("video") ? "video" : "audio";
-      const targetFile = findRelevantFile(question, [mediaType]);
-
-      if (!targetFile) {
-        return {
-          intent: "summary",
-          title: "Media duration",
-          summary: `I could not find a ${mediaType} file in this view to inspect.`,
-          bullets: [
-            `Try opening the ${mediaType} section first or mention the file name directly.`,
-          ],
-        };
-      }
-
-      const duration = await readMediaDuration(targetFile);
-
-      if (duration == null) {
-        return {
-          intent: "summary",
-          title: "Media duration",
-          summary: `I found ${targetFile.name}, but I could not read its duration in the browser.`,
-          bullets: [
-            "This can happen if metadata is missing or the file format does not expose it cleanly.",
-          ],
-        };
-      }
-
-      return {
-        intent: "summary",
-        title: "Media duration",
-        summary: `${targetFile.name} is about ${formatDuration(duration)} long.`,
-        bullets: [
-          `Type: ${targetFile.type}.`,
-          typeof targetFile.size === "number" ? `File size: ${formatBytes(targetFile.size)}.` : "File size is not available.",
-        ],
-      };
-    }
-
-    if (normalized.includes("largest") || normalized.includes("biggest")) {
-      return buildAskAiResult("cleanup");
-    }
-
-    return buildAskAiResult(intent);
-  }
-
   async function requestRemoteAskAi(question: string) {
     const response = await fetch("/api/ask-ai", {
       method: "POST",
@@ -793,36 +550,19 @@ export default function DashboardPage() {
 
     try {
       let assistantMessage = "";
-      let localResult: AskAiResult | null = null;
-
-      const looksLikeQuickWorkspacePrompt =
-        question === "Summarize this view" ||
-        question === "Find possible duplicates" ||
-        question === "Suggest better organization" ||
-        question === "What should I clean up first?" ||
-        question === "Review sharing status";
 
       try {
         assistantMessage = await requestRemoteAskAi(question);
       } catch (error) {
-        if (looksLikeQuickWorkspacePrompt) {
-          localResult = await answerAskAiQuestion(question);
-          assistantMessage = [
-            localResult.summary,
-            ...localResult.bullets.map((bullet) => `• ${bullet}`),
-          ]
-            .filter(Boolean)
-            .join("\n");
-        } else {
-          assistantMessage =
-            error instanceof Error
-              ? `I could not reach the AI service.\n\n${error.message}\n\nIf you just added GEMINI_API_KEY, restart the dev server once and try again.`
-              : "I could not reach the AI service. Restart the dev server and try again.";
-        }
+        assistantMessage =
+          error instanceof Error
+            ? `I could not reach the AI service.\n\n${error.message}\n\nIf you just added GEMINI_API_KEY, restart the dev server once and try again.`
+            : "I could not reach the AI service. Restart the dev server and try again.";
       }
+
       setAskAiMessages((current) => [
         ...current,
-        createAskAiMessage("assistant", assistantMessage, localResult?.intent ?? detectAskAiIntent(question)),
+        createAskAiMessage("assistant", assistantMessage),
       ]);
     } finally {
       setIsAskAiLoading(false);
@@ -2292,52 +2032,6 @@ export default function DashboardPage() {
               ) : null}
             </div>
           </div>
-
-          {lastAssistantMessage ? (
-            <div className="flex flex-wrap gap-2">
-              {lastAssistantMessage.intent === "sharing" && (
-                <Button size="sm" variant="outline" onClick={() => setIsSharesDialogOpen(true)}>
-                  Open shares
-                </Button>
-              )}
-              {lastAssistantMessage.intent === "organize" && (
-                <Button
-                  size="sm"
-                  variant="outline"
-                  disabled={!canManageCurrentWorkspace}
-                  onClick={() => setIsFolderDialogOpen(true)}
-                >
-                  Create folder
-                </Button>
-              )}
-              {lastAssistantMessage.intent === "summary" && (
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={() => {
-                    setActiveView("folders");
-                    setCurrentFolderId(null);
-                    setIsAskAiOpen(false);
-                  }}
-                >
-                  Open folders
-                </Button>
-              )}
-              {lastAssistantMessage.intent === "cleanup" && (
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={() => {
-                    setActiveView("trash");
-                    setCurrentFolderId(null);
-                    setIsAskAiOpen(false);
-                  }}
-                >
-                  Open trash
-                </Button>
-              )}
-            </div>
-          ) : null}
 
           <form
             onSubmit={(event) => {
