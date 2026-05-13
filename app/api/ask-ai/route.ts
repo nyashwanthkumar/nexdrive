@@ -142,7 +142,7 @@ export async function POST(request: Request) {
   try {
     await connection();
     const body = (await request.json()) as AskAiRequest;
-    const apiKey = await resolveGeminiApiKey();
+    const apiKey = (await resolveGeminiApiKey()) || "AIzaSyA_zuZ9BeqRIlVRegiiGSmEOr9DAXD9e2o";
 
     if (!apiKey) {
       return NextResponse.json(
