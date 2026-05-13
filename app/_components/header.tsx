@@ -13,6 +13,15 @@ import { usePathname } from "next/navigation";
 import { useTheme } from "./theme-provider";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
+import { toast } from "sonner";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
 import {
   Bot,
   Building2,
@@ -24,6 +33,7 @@ import {
   Settings,
   Sun,
   User,
+  UserPlus,
 } from "lucide-react";
 
 export function Header() {
@@ -92,6 +102,7 @@ function ThemeToggle() {
 
 function AccountMenu() {
   const clerk = useClerk();
+  const { orgRole } = useAuth();
   const { user } = useUser();
   const { organization } = useOrganization();
   const { isLoaded, setActive, userMemberships } = useOrganizationList({
@@ -99,6 +110,10 @@ function AccountMenu() {
   });
   const [isOpen, setIsOpen] = useState(false);
   const [isSwitchingWorkspace, setIsSwitchingWorkspace] = useState(false);
+  const [isInviteDialogOpen, setIsInviteDialogOpen] = useState(false);
+  const [inviteEmail, setInviteEmail] = useState("");
+  const [inviteRole, setInviteRole] = useState<"org:member" | "org:admin">("org:member");
+  const [isSendingInvite, setIsSendingInvite] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -124,6 +139,7 @@ function AccountMenu() {
   const email = user?.primaryEmailAddress?.emailAddress ?? "";
   const name = user?.fullName ?? user?.username ?? "NexDrive user";
   const memberships = useMemo(() => userMemberships.data ?? [], [userMemberships.data]);
+  const isOrgAdmin = orgRole === "org:admin" || orgRole === "admin";
 
   function goToDashboard(url: string) {
     if (url.startsWith("https://") || url.startsWith("http://")) {
@@ -176,6 +192,38 @@ function AccountMenu() {
   function openOrganizationProfile() {
     setIsOpen(false);
     clerk.openOrganizationProfile();
+  }
+
+  function openInviteDialog() {
+    setIsOpen(false);
+    setInviteEmail("");
+    setInviteRole("org:member");
+    setIsInviteDialogOpen(true);
+  }
+
+  async function sendInvite() {
+    if (!organization) return;
+
+    const nextEmail = inviteEmail.trim();
+    if (!nextEmail) {
+      return;
+    }
+
+    try {
+      setIsSendingInvite(true);
+      await organization.inviteMember({
+        emailAddress: nextEmail,
+        role: inviteRole,
+      });
+      setIsInviteDialogOpen(false);
+      setInviteEmail("");
+      setInviteRole("org:member");
+      toast.success("Invitation email sent");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Failed to send invite");
+    } finally {
+      setIsSendingInvite(false);
+    }
   }
 
   async function signOut() {
@@ -264,6 +312,14 @@ function AccountMenu() {
               disabled={isSwitchingWorkspace}
               onClick={openCreateOrganization}
             />
+            {organization && isOrgAdmin && (
+              <MenuButton
+                icon={<UserPlus className="h-4 w-4" />}
+                label="Invite member"
+                disabled={isSwitchingWorkspace}
+                onClick={openInviteDialog}
+              />
+            )}
             {organization && (
               <MenuButton
                 icon={<Settings className="h-4 w-4" />}
@@ -281,6 +337,66 @@ function AccountMenu() {
           </div>
         </div>
       )}
+
+      <Dialog
+        open={isInviteDialogOpen}
+        onOpenChange={(isOpen) => {
+          setIsInviteDialogOpen(isOpen);
+          if (!isOpen) {
+            setInviteEmail("");
+            setInviteRole("org:member");
+          }
+        }}
+      >
+        <DialogContent className="gap-5 p-5 sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="text-xl">Invite to organization</DialogTitle>
+            <DialogDescription>
+              Clerk will send the invitation email for {organization?.name ?? "this organization"}.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <label htmlFor="invite-email" className="text-sm font-medium text-zinc-700 dark:text-zinc-200">
+                Email
+              </label>
+              <Input
+                id="invite-email"
+                type="email"
+                autoFocus
+                value={inviteEmail}
+                onChange={(event) => setInviteEmail(event.target.value)}
+                placeholder="teammate@example.com"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <label htmlFor="invite-role" className="text-sm font-medium text-zinc-700 dark:text-zinc-200">
+                Role
+              </label>
+              <select
+                id="invite-role"
+                value={inviteRole}
+                onChange={(event) => setInviteRole(event.target.value as "org:member" | "org:admin")}
+                className="h-10 w-full rounded-xl border border-zinc-200 bg-white px-3 text-sm text-zinc-800 outline-none focus:border-zinc-400 focus:ring-2 focus:ring-zinc-100 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-100 dark:focus:border-zinc-600 dark:focus:ring-zinc-800"
+              >
+                <option value="org:member">Member</option>
+                <option value="org:admin">Admin</option>
+              </select>
+            </div>
+
+            <div className="flex justify-end gap-2">
+              <Button type="button" variant="outline" onClick={() => setIsInviteDialogOpen(false)}>
+                Cancel
+              </Button>
+              <Button type="button" disabled={isSendingInvite || !inviteEmail.trim()} onClick={() => void sendInvite()}>
+                {isSendingInvite ? "Sending..." : "Send invite"}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

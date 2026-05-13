@@ -723,6 +723,51 @@ export default function DashboardPage() {
     return buildAskAiResult(intent);
   }
 
+  async function requestRemoteAskAi(question: string) {
+    const response = await fetch("/api/ask-ai", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        question,
+        workspaceTitle,
+        viewLabel: viewMeta.label,
+        files: displayedFiles.map((file) => ({
+          name: file.name,
+          type: file.type,
+          size: file.size,
+          isFavorite: file.isFavorite ?? false,
+          folderId: file.folderId,
+        })),
+        folders: visibleFolders.map((folder) => ({
+          name: folder.name,
+          isFavorite: folder.isFavorite ?? false,
+        })),
+        activeShares: activeShares.length,
+        storageTotal,
+        storageLimit,
+      }),
+    });
+
+    if (!response.ok) {
+      throw new Error("Remote Ask AI is not available");
+    }
+
+    const payload = (await response.json()) as {
+      title?: string;
+      summary?: string;
+      bullets?: string[];
+    };
+
+    return {
+      intent: detectAskAiIntent(question),
+      title: payload.title?.trim() || "Ask AI",
+      summary: payload.summary?.trim() || "No answer returned.",
+      bullets: Array.isArray(payload.bullets) ? payload.bullets.filter(Boolean) : [],
+    } satisfies AskAiResult;
+  }
+
   async function runAskAi(nextQuestion = askAiQuestion) {
     const question = nextQuestion.trim() || "Summarize this view";
     setAskAiQuestion(question);
@@ -730,7 +775,14 @@ export default function DashboardPage() {
     setIsAskAiLoading(true);
 
     try {
-      const result = await answerAskAiQuestion(question);
+      let result: AskAiResult;
+
+      try {
+        result = await requestRemoteAskAi(question);
+      } catch {
+        result = await answerAskAiQuestion(question);
+      }
+
       setAskAiResult(result);
     } finally {
       setIsAskAiLoading(false);
