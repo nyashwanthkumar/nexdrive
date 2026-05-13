@@ -1,5 +1,7 @@
 import { connection } from "next/server";
 import { NextResponse } from "next/server";
+import { readFile } from "node:fs/promises";
+import path from "node:path";
 
 type AskAiRequest = {
   question: string;
@@ -38,11 +40,30 @@ function extractGeminiText(payload: unknown) {
     .trim();
 }
 
+async function resolveGeminiApiKey() {
+  if (process.env.GEMINI_API_KEY) {
+    return process.env.GEMINI_API_KEY.trim();
+  }
+
+  if (process.env.NEXT_PUBLIC_GEMINI_API_KEY) {
+    return process.env.NEXT_PUBLIC_GEMINI_API_KEY.trim();
+  }
+
+  try {
+    const envPath = path.join(process.cwd(), ".env.local");
+    const contents = await readFile(envPath, "utf8");
+    const match = contents.match(/^GEMINI_API_KEY=(.+)$/m) ?? contents.match(/^NEXT_PUBLIC_GEMINI_API_KEY=(.+)$/m);
+    return match?.[1]?.trim() || "";
+  } catch {
+    return "";
+  }
+}
+
 export async function POST(request: Request) {
   try {
     await connection();
     const body = (await request.json()) as AskAiRequest;
-    const apiKey = process.env.GEMINI_API_KEY;
+    const apiKey = await resolveGeminiApiKey();
 
     if (!apiKey) {
       return NextResponse.json(
