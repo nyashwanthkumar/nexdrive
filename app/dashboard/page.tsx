@@ -11,35 +11,26 @@ import {
   Dialog,
   DialogContent,
   DialogDescription,
-  DialogFooter,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
 import type { Id } from "@/convex/_generated/dataModel";
 import {
   Activity,
-  ArrowDownAZ,
-  ArrowDownZA,
-  ArrowUpDown,
   Bot,
   Building2,
   Check,
-  ChevronDown,
   Clock,
-  Copy,
   Download,
   Eye,
   Files,
   FileSpreadsheet,
   FileText,
   FolderOpen,
-  Grid2X2,
   ImageIcon,
-  List,
   Link2,
   Loader2,
   Menu,
-  MoreVertical,
   Moon,
   Music,
   Pencil,
@@ -58,20 +49,19 @@ import { toast } from "sonner";
 import { useRouter } from "next/navigation";
 import { useTheme } from "../_components/theme-provider";
 import { useEffect, useMemo, useState } from "react";
+import { getDisplayedFiles, getVisibleFolders } from "./_features/file-feature-filters";
+import { getViewMeta, type DisplayMode, type SortMode, type ViewType } from "./_features/feature-types";
+import { getVisibleTrashFolders } from "./_features/trash";
+import { ShareFileDialog, SharedLinksDialog } from "./_features/share";
+import { UploadFeature } from "./_features/upload";
+import { SortingFeature } from "./_features/sorting";
+import { ViewModeFeature } from "./_features/view-mode";
+import { SelectionFeature } from "./_features/selection";
+import { RenameFileFeature, RenameFolderFeature } from "./_features/rename";
+import { DeleteFolderFeature } from "./_features/delete";
+import { FolderActionsFeature } from "./_features/folder-actions";
+import { SidebarItemFeature } from "./_features/sidebar";
 
-type ViewType =
-  | "recent"
-  | "starred"
-  | "folders"
-  | "images"
-  | "videos"
-  | "music"
-  | "documents"
-  | "pdfs"
-  | "trash"
-  | "activity";
-type DisplayMode = "grid" | "list";
-type SortMode = "newest" | "oldest" | "nameAsc" | "nameDesc";
 type AskAiChatMessage = {
   id: string;
   role: "user" | "assistant";
@@ -282,39 +272,18 @@ export default function DashboardPage() {
   const currentFolder = folders?.find((folder) => folder._id === currentFolderId);
   const workspaceTitle = organization ? organization.name : "Personal";
 
-  const displayedFiles = useMemo(() => {
-    const files = activeView === "trash" ? trashFiles ?? [] : activeFiles ?? [];
-    const filteredFiles = files.filter((file) => {
-      const matchesSearch = file.name.toLowerCase().includes(search.toLowerCase());
-      const matchesFolder =
-        activeView === "recent" || activeView === "starred" || activeView === "trash"
-          ? true
-          : currentFolderId
-          ? file.folderId === currentFolderId
-          : !file.folderId;
-
-      if (activeView === "starred") return matchesSearch && file.isFavorite;
-      if (activeView === "activity") return false;
-      if (activeView === "folders") {
-        return currentFolderId ? matchesSearch && matchesFolder : false;
-      }
-      if (activeView === "images") return matchesSearch && file.type === "image";
-      if (activeView === "videos") return matchesSearch && file.type === "video";
-      if (activeView === "music") return matchesSearch && file.type === "audio";
-      if (activeView === "documents") {
-        return matchesSearch && ["document", "spreadsheet"].includes(file.type);
-      }
-      if (activeView === "pdfs") return matchesSearch && file.type === "pdf";
-      return matchesSearch && matchesFolder;
-    });
-
-    return [...filteredFiles].sort((a, b) => {
-      if (sortMode === "oldest") return a._creationTime - b._creationTime;
-      if (sortMode === "nameAsc") return a.name.localeCompare(b.name);
-      if (sortMode === "nameDesc") return b.name.localeCompare(a.name);
-      return b._creationTime - a._creationTime;
-    });
-  }, [activeFiles, trashFiles, search, activeView, sortMode, currentFolderId]);
+  const displayedFiles = useMemo(
+    () =>
+      getDisplayedFiles({
+        activeFiles: activeFiles ?? [],
+        trashFiles: trashFiles ?? [],
+        search,
+        activeView,
+        sortMode,
+        currentFolderId,
+      }),
+    [activeFiles, trashFiles, search, activeView, sortMode, currentFolderId]
+  );
 
   useEffect(() => {
     setSelectedFileIds((current) =>
@@ -322,55 +291,19 @@ export default function DashboardPage() {
     );
   }, [displayedFiles]);
 
-  const viewMeta = {
-    recent: { label: "Recent", description: "Latest files in this workspace" },
-    starred: { label: "Starred", description: "Files you have starred" },
-    folders: {
-      label: currentFolder ? currentFolder.name : "Folders",
-      description: currentFolder ? "Files inside this folder" : "Create folders and organize files",
-    },
-    images: { label: "Images", description: "Image files in this workspace" },
-    videos: { label: "Videos", description: "Video files in this workspace" },
-    music: { label: "Music", description: "Audio files in this workspace" },
-    documents: { label: "Documents", description: "Documents in this workspace" },
-    pdfs: { label: "PDFs", description: "PDF files in this workspace" },
-    trash: { label: "Trash", description: "Restore or permanently remove deleted files" },
-    activity: { label: "Recent activity", description: "Latest file changes in this workspace" },
-  }[activeView];
+  const viewMeta = getViewMeta(activeView, currentFolder?.name);
 
   const visibleFolders = useMemo(() => {
-    if (activeView === "folders" && !currentFolderId) {
-      return [...(folders ?? [])]
-          .filter(
-            (folder) =>
-              !(folder.shouldDelete ?? false) &&
-              folder.name.toLowerCase().includes(search.toLowerCase())
-          )
-          .sort((a, b) => a.name.localeCompare(b.name));
-    }
-
-    if (activeView === "starred") {
-      return [...(folders ?? [])]
-          .filter(
-            (folder) =>
-              !(folder.shouldDelete ?? false) &&
-              (folder.isFavorite ?? false) &&
-              folder.name.toLowerCase().includes(search.toLowerCase())
-          )
-          .sort((a, b) => a.name.localeCompare(b.name));
-    }
-
     if (activeView === "trash") {
-      return [...(folders ?? [])]
-          .filter(
-            (folder) =>
-              (folder.shouldDelete ?? false) &&
-              folder.name.toLowerCase().includes(search.toLowerCase())
-          )
-          .sort((a, b) => (b.deletedAt ?? 0) - (a.deletedAt ?? 0));
+      return getVisibleTrashFolders(folders ?? [], search);
     }
 
-    return [];
+    return getVisibleFolders({
+      activeView,
+      currentFolderId,
+      folders: folders ?? [],
+      search,
+    });
   }, [activeView, currentFolderId, folders, search]);
 
   useEffect(() => {
@@ -405,12 +338,6 @@ export default function DashboardPage() {
     selectableItemCount > 0 &&
     selectableFiles.every((file) => selectedFileIds.includes(file._id)) &&
     selectableFolders.every((folder) => selectedFolderIds.includes(folder._id));
-  const sortLabels: Record<SortMode, string> = {
-    newest: "Newest first",
-    oldest: "Oldest first",
-    nameAsc: "Name A-Z",
-    nameDesc: "Name Z-A",
-  };
   function formatBytes(size: number) {
     if (!size) return "0 MB";
     if (size < 1024 * 1024) return `${Math.max(1, Math.round(size / 1024))} KB`;
@@ -498,95 +425,6 @@ export default function DashboardPage() {
   }
 
   async function requestRemoteAskAi(question: string) {
-    const directGeminiRequest = async () => {
-      const publicKey = process.env.NEXT_PUBLIC_GEMINI_API_KEY;
-      if (!publicKey) {
-        throw new Error("NEXT_PUBLIC_GEMINI_API_KEY is not configured");
-      }
-
-      const conversation = askAiMessages
-        .slice(-8)
-        .map((message) => `${message.role === "assistant" ? "Assistant" : "User"}: ${message.content}`)
-        .join("\n");
-
-      const prompt = [
-        "You are NexDrive AI, a helpful file workspace assistant inside a product called NexDrive.",
-        "Answer naturally like a real chat assistant, but only use the workspace data below.",
-        "If the user asks for something not present in the data, say that clearly instead of inventing details.",
-        "Be concise, useful, and practical.",
-        "",
-        `Workspace: ${workspaceTitle}`,
-        `Current view: ${viewMeta.label}`,
-        `Visible files: ${displayedFiles.length}`,
-        `Visible folders: ${visibleFolders.length}`,
-        `Active shares: ${activeShares.length}`,
-        `Storage used: ${storageTotal} bytes of ${storageLimit} bytes`,
-        "",
-        "Files:",
-        JSON.stringify(
-          displayedFiles.slice(0, 30).map((file) => ({
-            name: file.name,
-            type: file.type,
-            size: file.size,
-            isFavorite: file.isFavorite ?? false,
-            folderId: file.folderId,
-          }))
-        ),
-        "",
-        "Folders:",
-        JSON.stringify(
-          visibleFolders.slice(0, 20).map((folder) => ({
-            name: folder.name,
-            isFavorite: folder.isFavorite ?? false,
-          }))
-        ),
-        "",
-        "Recent conversation:",
-        conversation || "No previous messages.",
-        "",
-        `Latest user question: ${question}`,
-      ].join("\n");
-
-      const response = await fetch(
-        "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent",
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "x-goog-api-key": publicKey,
-          },
-          body: JSON.stringify({
-            contents: [
-              {
-                parts: [{ text: prompt }],
-              },
-            ],
-          }),
-        }
-      );
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(errorText || "Gemini request failed");
-      }
-
-      const payload = (await response.json()) as {
-        candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>;
-      };
-
-      const rawText = (payload.candidates ?? [])
-        .flatMap((candidate) => candidate.content?.parts ?? [])
-        .map((part) => part.text ?? "")
-        .join("\n")
-        .trim();
-
-      if (!rawText) {
-        throw new Error("Gemini returned an empty response");
-      }
-
-      return rawText;
-    };
-
     const response = await fetch("/api/ask-ai", {
       method: "POST",
       headers: {
@@ -620,11 +458,7 @@ export default function DashboardPage() {
 
     if (!response.ok) {
       const errorPayload = (await response.json().catch(() => null)) as { error?: string } | null;
-      const message = errorPayload?.error || "Remote Ask AI is not available";
-      if (message.includes("GEMINI_API_KEY is not configured")) {
-        return await directGeminiRequest();
-      }
-      throw new Error(message);
+      throw new Error(errorPayload?.error || "Remote Ask AI is not available");
     }
 
     const payload = (await response.json()) as {
@@ -978,7 +812,7 @@ export default function DashboardPage() {
 
             {/* Sidebar */}
           <aside className="relative flex flex-col gap-3 border-b border-zinc-200/80 bg-white px-3 py-3 dark:border-zinc-800 dark:bg-zinc-950 lg:max-h-[calc(100vh-64px)] lg:overflow-y-auto lg:border-b-0 lg:border-r lg:py-5">
-            <div className="flex items-center gap-2 px-1 lg:mb-2">
+            <UploadFeature>
               <button
                 type="button"
                 aria-label="Open sections"
@@ -989,7 +823,7 @@ export default function DashboardPage() {
                 {isMobileNavOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
               </button>
               <UploadButton folders={folders ?? []} disabled={!canManageCurrentWorkspace} />
-            </div>
+            </UploadFeature>
 
             <nav
               onClick={() => setIsMobileNavOpen(false)}
@@ -1036,7 +870,7 @@ export default function DashboardPage() {
                   {activeShares.length} active shares
                 </p>
               </div>
-              <SidebarItem
+              <SidebarItemFeature
                 active={activeView === "recent"}
                 icon={<Clock className="h-4 w-4" />}
                 label="Recent"
@@ -1045,7 +879,7 @@ export default function DashboardPage() {
                   setCurrentFolderId(null);
                 }}
               />
-              <SidebarItem
+              <SidebarItemFeature
                 active={activeView === "starred"}
                 icon={<Star className="h-4 w-4" />}
                 label="Starred"
@@ -1054,7 +888,7 @@ export default function DashboardPage() {
                   setCurrentFolderId(null);
                 }}
               />
-              <SidebarItem
+              <SidebarItemFeature
                 active={activeView === "activity"}
                 icon={<Activity className="h-4 w-4" />}
                 label="Activity"
@@ -1063,7 +897,7 @@ export default function DashboardPage() {
                   setCurrentFolderId(null);
                 }}
               />
-              <SidebarItem
+              <SidebarItemFeature
                 active={activeView === "folders"}
                 icon={<FolderOpen className="h-4 w-4" />}
                 label="Folders"
@@ -1073,7 +907,7 @@ export default function DashboardPage() {
                 }}
               />
               <div className="hidden lg:my-3 lg:block lg:h-px lg:bg-zinc-100" />
-              <SidebarItem
+              <SidebarItemFeature
                 active={activeView === "images"}
                 icon={<ImageIcon className="h-4 w-4" />}
                 label="Images"
@@ -1082,7 +916,7 @@ export default function DashboardPage() {
                   setCurrentFolderId(null);
                 }}
               />
-              <SidebarItem
+              <SidebarItemFeature
                 active={activeView === "videos"}
                 icon={<Video className="h-4 w-4" />}
                 label="Videos"
@@ -1091,7 +925,7 @@ export default function DashboardPage() {
                   setCurrentFolderId(null);
                 }}
               />
-              <SidebarItem
+              <SidebarItemFeature
                 active={activeView === "music"}
                 icon={<Music className="h-4 w-4" />}
                 label="Music"
@@ -1100,7 +934,7 @@ export default function DashboardPage() {
                   setCurrentFolderId(null);
                 }}
               />
-              <SidebarItem
+              <SidebarItemFeature
                 active={activeView === "documents"}
                 icon={<FileText className="h-4 w-4" />}
                 label="Documents"
@@ -1109,7 +943,7 @@ export default function DashboardPage() {
                   setCurrentFolderId(null);
                 }}
               />
-              <SidebarItem
+              <SidebarItemFeature
                 active={activeView === "pdfs"}
                 icon={<FileText className="h-4 w-4" />}
                 label="PDFs"
@@ -1118,7 +952,7 @@ export default function DashboardPage() {
                   setCurrentFolderId(null);
                 }}
               />
-              <SidebarItem
+              <SidebarItemFeature
                 active={activeView === "trash"}
                 icon={<Trash2 className="h-4 w-4" />}
                 label="Trash"
@@ -1256,86 +1090,16 @@ export default function DashboardPage() {
                   )
                 )}
                 <div className="hidden h-6 w-px bg-zinc-200 dark:bg-zinc-800 sm:block" />
-                <div data-sort-menu className="relative">
-                  <button
-                    type="button"
-                    onClick={() => setIsSortMenuOpen((open) => !open)}
-                    className="flex h-9 items-center gap-2 rounded-xl bg-zinc-100 px-3 text-sm text-zinc-700 dark:bg-zinc-800 dark:text-zinc-200"
-                  >
-                    {sortMode === "nameAsc" ? (
-                      <ArrowDownAZ className="h-4 w-4 text-zinc-500" />
-                    ) : sortMode === "nameDesc" ? (
-                      <ArrowDownZA className="h-4 w-4 text-zinc-500" />
-                    ) : (
-                      <ArrowUpDown className="h-4 w-4 text-zinc-500" />
-                    )}
-                    <span className="text-xs font-medium">{sortLabels[sortMode]}</span>
-                    <ChevronDown className="h-4 w-4 text-zinc-500" />
-                  </button>
-                  {isSortMenuOpen && (
-                    <div className="absolute right-0 top-11 z-[80] min-w-44 overflow-hidden rounded-xl border border-zinc-200 bg-white p-1 shadow-xl dark:border-zinc-800 dark:bg-zinc-900">
-                      {(
-                        [
-                          ["newest", "Newest first"],
-                          ["oldest", "Oldest first"],
-                          ["nameAsc", "Name A-Z"],
-                          ["nameDesc", "Name Z-A"],
-                        ] as [SortMode, string][]
-                      ).map(([value, label]) => (
-                        <button
-                          key={value}
-                          type="button"
-                          onClick={() => {
-                            setSortMode(value);
-                            setIsSortMenuOpen(false);
-                          }}
-                          className={`flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-sm transition ${
-                            sortMode === value
-                              ? "bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-950"
-                              : "text-zinc-700 hover:bg-zinc-100 dark:text-zinc-200 dark:hover:bg-zinc-800"
-                          }`}
-                        >
-                          <span>{label}</span>
-                          {sortMode === value ? <Check className="h-4 w-4" /> : null}
-                        </button>
-                      ))}
-                    </div>
-                  )}
-                </div>
-                <div className="flex h-9 overflow-hidden rounded-xl bg-zinc-100 p-0.5 dark:bg-zinc-800">
-                  <button
-                    type="button"
-                    aria-label="List view"
-                    onClick={() => setDisplayMode("list")}
-                    className={`flex h-8 w-10 items-center justify-center rounded-lg transition-colors ${
-                      displayMode === "list"
-                        ? "bg-zinc-900 text-white shadow-sm dark:bg-zinc-100 dark:text-zinc-950"
-                        : "text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100"
-                    }`}
-                  >
-                    {displayMode === "list" ? (
-                      <Check className="h-4 w-4" />
-                    ) : (
-                      <List className="h-4 w-4" />
-                    )}
-                  </button>
-                  <button
-                    type="button"
-                    aria-label="Grid view"
-                    onClick={() => setDisplayMode("grid")}
-                    className={`flex h-8 w-10 items-center justify-center rounded-lg transition-colors ${
-                      displayMode === "grid"
-                        ? "bg-zinc-900 text-white shadow-sm dark:bg-zinc-100 dark:text-zinc-950"
-                        : "text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100"
-                    }`}
-                  >
-                    {displayMode === "grid" ? (
-                      <Check className="h-4 w-4" />
-                    ) : (
-                      <Grid2X2 className="h-4 w-4" />
-                    )}
-                  </button>
-                </div>
+                <SortingFeature
+                  isOpen={isSortMenuOpen}
+                  sortMode={sortMode}
+                  onToggle={() => setIsSortMenuOpen((open) => !open)}
+                  onSelect={(value) => {
+                    setSortMode(value);
+                    setIsSortMenuOpen(false);
+                  }}
+                />
+                <ViewModeFeature displayMode={displayMode} onChange={setDisplayMode} />
               </div>
             </div>
 
@@ -1361,44 +1125,14 @@ export default function DashboardPage() {
               </div>
             )}
 
-            {selectedItemCount > 0 && (
-              <div className="flex flex-wrap items-center justify-between gap-3 rounded-[28px] border border-zinc-200/80 bg-zinc-100/80 px-3 py-2 shadow-sm shadow-zinc-200/40 backdrop-blur dark:border-zinc-800 dark:bg-zinc-900/85 dark:shadow-none">
-                <div className="flex items-center gap-2.5">
-                  <button
-                    type="button"
-                    onClick={clearSelection}
-                    className="flex h-9 w-9 items-center justify-center rounded-full text-zinc-500 transition hover:bg-white hover:text-zinc-900 dark:hover:bg-zinc-800 dark:hover:text-zinc-100"
-                  >
-                    <X className="h-4 w-4" />
-                  </button>
-                  <span className="text-sm font-medium text-zinc-800 dark:text-zinc-100">
-                    {selectedItemCount} selected
-                  </span>
-                </div>
-                <div className="flex flex-wrap items-center gap-1.5">
-                  {activeView === "trash" ? (
-                    <button
-                      type="button"
-                      disabled={isBulkWorking}
-                      onClick={bulkRestoreSelected}
-                      className="flex h-9 items-center gap-2 rounded-full px-3 text-sm text-zinc-600 transition hover:bg-white hover:text-zinc-950 disabled:opacity-50 dark:text-zinc-300 dark:hover:bg-zinc-800 dark:hover:text-zinc-100"
-                    >
-                      <RotateCcw className="h-4 w-4" />
-                      Restore
-                    </button>
-                  ) : null}
-                  <button
-                    type="button"
-                    disabled={isBulkWorking}
-                    onClick={bulkDeleteSelected}
-                    className="flex h-9 items-center gap-2 rounded-full px-3 text-sm text-zinc-600 transition hover:bg-white hover:text-red-600 disabled:opacity-50 dark:text-zinc-300 dark:hover:bg-zinc-800 dark:hover:text-red-400"
-                  >
-                    <Trash2 className="h-4 w-4" />
-                    {activeView === "trash" ? "Delete forever" : "Move to trash"}
-                  </button>
-                </div>
-              </div>
-            )}
+            <SelectionFeature
+              activeView={activeView}
+              selectedItemCount={selectedItemCount}
+              isBulkWorking={isBulkWorking}
+              onClear={clearSelection}
+              onRestore={bulkRestoreSelected}
+              onDelete={bulkDeleteSelected}
+            />
 
             {/* Loading */}
             {isLoading && (
@@ -1576,7 +1310,7 @@ export default function DashboardPage() {
                       </div>
                     ) : (
                       <div onClick={(event) => event.stopPropagation()}>
-                        <FolderActionsMenu
+                        <FolderActionsFeature
                           isFavorite={folder.isFavorite ?? false}
                           isOpen={folderMenuId === folder._id}
                           isDeleting={deletingFolderId === folder._id}
@@ -1665,7 +1399,7 @@ export default function DashboardPage() {
                       </div>
                     ) : (
                       <div onClick={(event) => event.stopPropagation()}>
-                        <FolderActionsMenu
+                        <FolderActionsFeature
                           isFavorite={folder.isFavorite ?? false}
                           isOpen={folderMenuId === folder._id}
                           isDeleting={deletingFolderId === folder._id}
@@ -2325,250 +2059,65 @@ export default function DashboardPage() {
         </div>
       )}
 
-      <Dialog
+      <SharedLinksDialog
         open={isSharesDialogOpen}
         onOpenChange={setIsSharesDialogOpen}
-      >
-        <DialogContent className="gap-5 p-5 sm:max-w-2xl">
-          <DialogHeader>
-            <DialogTitle className="text-xl">Shared links</DialogTitle>
-            <DialogDescription>
-              Review active and expired links without adding more controls to each file.
-            </DialogDescription>
-          </DialogHeader>
-
-          <div className="max-h-[420px] space-y-2 overflow-auto">
-            {(shareLinks ?? []).length === 0 ? (
-              <div className="rounded-xl border border-zinc-200 bg-zinc-50 p-5 text-center text-sm text-zinc-500 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-400">
-                No shared links yet.
-              </div>
-            ) : (
-              (shareLinks ?? []).map((share) => {
-                const shareUrlValue =
-                  typeof window === "undefined" ? "" : `${window.location.origin}/share/${share.token}`;
-                const inactive = share.isExpired || share.isRevoked;
-
-                return (
-                  <div
-                    key={share._id}
-                    className="flex flex-col gap-3 rounded-xl border border-zinc-200 bg-white p-3 dark:border-zinc-800 dark:bg-zinc-900 sm:flex-row sm:items-center sm:justify-between"
-                  >
-                    <div className="min-w-0">
-                      <p className="truncate text-sm font-medium text-zinc-900 dark:text-zinc-50">
-                        {share.fileName}
-                      </p>
-                      <p className="mt-1 text-xs text-zinc-500 dark:text-zinc-400">
-                        {inactive
-                          ? share.isRevoked
-                            ? "Revoked"
-                            : "Expired"
-                          : `Expires ${new Date(share.expiresAt).toLocaleString()}`}
-                      </p>
-                    </div>
-                    <div className="flex shrink-0 gap-2">
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        disabled={inactive || !canManageCurrentWorkspace}
-                        onClick={async () => {
-                          await navigator.clipboard?.writeText(shareUrlValue);
-                          toast.success("Link copied");
-                        }}
-                      >
-                        <Copy className="mr-1.5 h-3.5 w-3.5" />
-                        Copy
-                      </Button>
-                      <Button
-                        type="button"
-                        variant="destructive"
-                        size="sm"
-                        disabled={inactive}
-                        onClick={async () => {
-                          try {
-                            await revokeShareLink({ shareId: share._id, actorRole: workspaceRole ?? undefined });
-                            toast.success("Share link revoked");
-                          } catch (error) {
-                            toast.error(error instanceof Error ? error.message : "Failed to revoke link");
-                          }
-                        }}
-                      >
-                        Revoke
-                      </Button>
-                    </div>
-                  </div>
-                );
-              })
-            )}
-          </div>
-        </DialogContent>
-      </Dialog>
-
-      <Dialog
-        open={!!sharingFile}
-        onOpenChange={(isOpen) => {
-          if (!isOpen) {
-            setSharingFile(null);
-            setShareUrl("");
-            setShareDuration("24");
-          }
+        shareLinks={shareLinks ?? []}
+        canManage={canManageCurrentWorkspace}
+        onRevoke={async (shareId) => {
+          await revokeShareLink({ shareId: shareId as Id<"shareLinks">, actorRole: workspaceRole ?? undefined });
         }}
-      >
-        <DialogContent className="gap-5 p-5 sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle className="text-xl">Share file</DialogTitle>
-            <DialogDescription>
-              Create an expiring link for {sharingFile ? `"${sharingFile.name}"` : "this file"}.
-            </DialogDescription>
-          </DialogHeader>
-          <form onSubmit={submitShareLink} className="space-y-5">
-            <div className="space-y-2">
-              <label htmlFor="share-duration" className="text-sm font-medium text-zinc-700">
-                Link expires after
-              </label>
-              <select
-                id="share-duration"
-                value={shareDuration}
-                onChange={(event) => setShareDuration(event.target.value)}
-                className="h-10 w-full rounded-xl border border-zinc-200 bg-white px-3 text-sm text-zinc-800 outline-none focus:border-zinc-400 focus:ring-2 focus:ring-zinc-100"
-              >
-                <option value="1">1 hour</option>
-                <option value="24">24 hours</option>
-                <option value="168">7 days</option>
-              </select>
-            </div>
+      />
 
-            {shareUrl && (
-              <div className="flex items-center gap-2 rounded-xl border border-zinc-200 bg-zinc-50 p-2">
-                <Input value={shareUrl} readOnly className="border-0 bg-transparent shadow-none" />
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="icon-sm"
-                  onClick={async () => {
-                    await navigator.clipboard?.writeText(shareUrl);
-                    toast.success("Link copied");
-                  }}
-                >
-                  <Copy className="h-4 w-4" />
-                </Button>
-              </div>
-            )}
+      <ShareFileDialog
+        sharingFile={sharingFile ? { name: sharingFile.name } : null}
+        shareDuration={shareDuration}
+        shareUrl={shareUrl}
+        isCreating={isCreatingShareLink}
+        onShareDurationChange={setShareDuration}
+        onClose={() => {
+          setSharingFile(null);
+          setShareUrl("");
+          setShareDuration("24");
+        }}
+        onSubmit={submitShareLink}
+      />
 
-            <DialogFooter className="border-0 bg-transparent p-0">
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => {
-                  setSharingFile(null);
-                  setShareUrl("");
-                }}
-              >
-                Close
-              </Button>
-              <Button type="submit" disabled={isCreatingShareLink}>
-                {isCreatingShareLink ? "Creating..." : "Create link"}
-              </Button>
-            </DialogFooter>
-          </form>
-        </DialogContent>
-      </Dialog>
-
-      <Dialog
+      <RenameFileFeature
         open={!!renamingFile}
+        value={renameValue}
+        isRenaming={isRenaming}
         onOpenChange={(isOpen) => {
           if (!isOpen) {
             setRenamingFile(null);
             setRenameValue("");
           }
         }}
-      >
-        <DialogContent className="gap-5 p-5 sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle className="text-xl">Rename file</DialogTitle>
-          </DialogHeader>
-          <form onSubmit={submitRename} className="space-y-5">
-            <div className="space-y-2">
-              <label
-                htmlFor="rename-file-name"
-                className="text-sm font-medium text-zinc-700"
-              >
-                Name
-              </label>
-              <Input
-                id="rename-file-name"
-                value={renameValue}
-                onChange={(event) => setRenameValue(event.target.value)}
-                autoFocus
-                placeholder="Enter a file name"
-              />
-            </div>
-            <div className="flex justify-end gap-2">
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => {
-                  setRenamingFile(null);
-                  setRenameValue("");
-                }}
-              >
-                Cancel
-              </Button>
-              <Button type="submit" disabled={isRenaming}>
-                {isRenaming ? "Renaming..." : "Rename"}
-              </Button>
-            </div>
-          </form>
-        </DialogContent>
-      </Dialog>
+        onValueChange={setRenameValue}
+        onSubmit={submitRename}
+        onCancel={() => {
+          setRenamingFile(null);
+          setRenameValue("");
+        }}
+      />
 
-      <Dialog
+      <RenameFolderFeature
         open={!!renamingFolder}
+        value={folderRenameValue}
+        isRenaming={isRenamingFolder}
         onOpenChange={(isOpen) => {
           if (!isOpen) {
             setRenamingFolder(null);
             setFolderRenameValue("");
           }
         }}
-      >
-        <DialogContent className="gap-5 p-5 sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle className="text-xl">Rename folder</DialogTitle>
-          </DialogHeader>
-          <form onSubmit={submitFolderRename} className="space-y-5">
-            <div className="space-y-2">
-              <label
-                htmlFor="rename-folder-name"
-                className="text-sm font-medium text-zinc-700"
-              >
-                Name
-              </label>
-              <Input
-                id="rename-folder-name"
-                value={folderRenameValue}
-                onChange={(event) => setFolderRenameValue(event.target.value)}
-                autoFocus
-                placeholder="Enter a folder name"
-              />
-            </div>
-            <div className="flex justify-end gap-2">
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => {
-                  setRenamingFolder(null);
-                  setFolderRenameValue("");
-                }}
-              >
-                Cancel
-              </Button>
-              <Button type="submit" disabled={isRenamingFolder}>
-                {isRenamingFolder ? "Renaming..." : "Rename"}
-              </Button>
-            </div>
-          </form>
-        </DialogContent>
-      </Dialog>
+        onValueChange={setFolderRenameValue}
+        onSubmit={submitFolderRename}
+        onCancel={() => {
+          setRenamingFolder(null);
+          setFolderRenameValue("");
+        }}
+      />
 
       <Dialog
         open={isFolderDialogOpen}
@@ -2613,153 +2162,16 @@ export default function DashboardPage() {
         </DialogContent>
       </Dialog>
 
-      <Dialog
+      <DeleteFolderFeature
         open={!!folderPendingDelete}
+        folderName={folderPendingDelete?.name ?? ""}
+        isDeleting={!!folderPendingDelete && deletingFolderId === folderPendingDelete.id}
         onOpenChange={(isOpen) => {
-          if (!isOpen) {
-            setFolderPendingDelete(null);
-          }
+          if (!isOpen) setFolderPendingDelete(null);
         }}
-      >
-        <DialogContent className="gap-4 p-5 sm:max-w-md" showCloseButton={false}>
-          <DialogHeader className="gap-2">
-            <DialogTitle className="text-xl">Delete folder?</DialogTitle>
-            <DialogDescription>
-              {folderPendingDelete
-                ? `Move "${folderPendingDelete.name}" to trash? The folder will be removed and files inside it will be moved back to Files.`
-                : ""}
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter className="border-0 bg-transparent p-0 pt-2">
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => setFolderPendingDelete(null)}
-            >
-              Cancel
-            </Button>
-            <Button
-              type="button"
-              variant="destructive"
-              disabled={!folderPendingDelete || deletingFolderId === folderPendingDelete.id}
-              onClick={handleDeleteFolder}
-            >
-              {folderPendingDelete && deletingFolderId === folderPendingDelete.id
-                ? "Deleting..."
-                : "Move to trash"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+        onCancel={() => setFolderPendingDelete(null)}
+        onConfirm={handleDeleteFolder}
+      />
     </>
-  );
-}
-
-function FolderActionsMenu({
-  isFavorite,
-  isOpen,
-  isDeleting,
-  canManage,
-  onToggle,
-  onRename,
-  onToggleFavorite,
-  onDelete,
-}: {
-  isFavorite: boolean;
-  isOpen: boolean;
-  isDeleting: boolean;
-  canManage: boolean;
-  onToggle: () => void;
-  onRename: () => void;
-  onToggleFavorite: () => void;
-  onDelete: () => void;
-}) {
-  return (
-    <div className="relative shrink-0" data-folder-menu>
-      <Button
-        type="button"
-        variant="ghost"
-        size="icon-sm"
-        className="text-zinc-500 hover:bg-zinc-100 hover:text-zinc-900"
-        aria-haspopup="menu"
-        aria-expanded={isOpen}
-        disabled={isDeleting}
-        onClick={(event) => {
-          event.stopPropagation();
-          onToggle();
-        }}
-      >
-        <MoreVertical className="h-4 w-4" />
-      </Button>
-
-      {isOpen && (
-        <div className="absolute right-0 top-10 z-30 min-w-52 overflow-hidden rounded-xl border border-zinc-200 bg-white py-1 shadow-xl shadow-zinc-200/70">
-          <button
-            type="button"
-            disabled={!canManage}
-            className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-zinc-700 transition-colors hover:bg-zinc-50 disabled:cursor-not-allowed disabled:text-zinc-300"
-            onClick={(event) => {
-              event.stopPropagation();
-              if (!canManage) return;
-              onRename();
-            }}
-          >
-            <Pencil className="h-4 w-4" />
-            Rename
-          </button>
-          <button
-            type="button"
-            className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-zinc-700 transition-colors hover:bg-zinc-50"
-            onClick={(event) => {
-              event.stopPropagation();
-              onToggleFavorite();
-            }}
-          >
-            <Star className={`h-4 w-4 ${isFavorite ? "fill-yellow-400 text-yellow-400" : ""}`} />
-            {isFavorite ? "Remove from starred" : "Add to starred"}
-          </button>
-          <div className="my-1 h-px bg-zinc-100" />
-          <button
-            type="button"
-            disabled={!canManage}
-            className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-red-600 transition-colors hover:bg-red-50 disabled:cursor-not-allowed disabled:text-zinc-300 disabled:hover:bg-transparent"
-            onClick={(event) => {
-              event.stopPropagation();
-              if (!canManage) return;
-              onDelete();
-            }}
-          >
-            <Trash2 className="h-4 w-4" />
-            Move to trash
-          </button>
-        </div>
-      )}
-    </div>
-  );
-}
-
-function SidebarItem({
-  active,
-  icon,
-  label,
-  onClick,
-}: {
-  active: boolean;
-  icon: React.ReactNode;
-  label: string;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      onClick={onClick}
-      className={`flex w-full items-center gap-2.5 rounded-lg px-3 py-2.5 text-left text-sm transition-colors ${
-        active
-          ? "bg-zinc-900 font-medium text-white dark:bg-zinc-100 dark:text-zinc-950"
-          : "text-zinc-600 hover:bg-zinc-50 hover:text-zinc-900 dark:text-zinc-300 dark:hover:bg-zinc-900 dark:hover:text-white"
-      }`}
-    >
-      {icon}
-      {label}
-    </button>
   );
 }
