@@ -3,6 +3,7 @@
 import Link from "next/link";
 import {
   SignInButton,
+  OrganizationProfile,
   useAuth,
   useClerk,
   useOrganization,
@@ -30,11 +31,52 @@ import {
   LogOut,
   Moon,
   Plus,
+  Monitor,
+  ShieldCheck,
   Settings,
   Sun,
   User,
   UserPlus,
 } from "lucide-react";
+
+type OrganizationSecurityMembership = {
+  id: string;
+  role: string;
+  roleName?: string;
+  publicUserData?: {
+    firstName: string | null;
+    lastName: string | null;
+    imageUrl: string;
+    identifier: string;
+    username?: string;
+  };
+};
+
+type OrganizationSecurityResource = {
+  membersCount: number;
+  pendingInvitationsCount: number;
+  getMemberships: (params?: {
+    initialPage?: number;
+    pageSize?: number;
+    role?: string[];
+  }) => Promise<{ data: OrganizationSecurityMembership[] }>;
+};
+
+type OrganizationSecuritySession = {
+  id: string;
+  status: string;
+  lastActiveAt: Date;
+  latestActivity: {
+    browserName?: string;
+    browserVersion?: string;
+    deviceType?: string;
+    ipAddress?: string;
+    city?: string;
+    country?: string;
+    isMobile?: boolean;
+  };
+  revoke: () => Promise<OrganizationSecuritySession>;
+};
 
 export function Header() {
   const { isSignedIn } = useAuth();
@@ -100,6 +142,29 @@ function ThemeToggle() {
   );
 }
 
+const organizationProfileAppearance = {
+  elements: {
+    rootBox: "w-full",
+    card: "rounded-3xl border border-zinc-200 shadow-2xl shadow-zinc-950/10 dark:border-zinc-800 dark:bg-zinc-950",
+    navbar: "bg-zinc-50/90 dark:bg-zinc-950",
+    navbarButton:
+      "rounded-xl text-zinc-600 transition-all hover:bg-white hover:text-zinc-950 data-[active=true]:bg-zinc-950 data-[active=true]:text-white dark:text-zinc-300 dark:hover:bg-zinc-900 dark:hover:text-white dark:data-[active=true]:bg-zinc-100 dark:data-[active=true]:text-zinc-950",
+    pageScrollBox: "px-6 py-5",
+    page: "space-y-4",
+    profileSection: "rounded-2xl border border-zinc-200 bg-white px-4 py-3 dark:border-zinc-800 dark:bg-zinc-900",
+    profileSectionTitle: "text-sm font-semibold text-zinc-950 dark:text-zinc-50",
+    profileSectionContent: "text-sm text-zinc-600 dark:text-zinc-300",
+    table: "overflow-hidden rounded-2xl border border-zinc-200 dark:border-zinc-800",
+    tableHead: "bg-zinc-50 text-zinc-500 dark:bg-zinc-900 dark:text-zinc-400",
+    tableRow: "border-zinc-100 dark:border-zinc-800",
+    formButtonPrimary:
+      "rounded-xl bg-zinc-950 text-white shadow-sm transition hover:bg-zinc-800 dark:bg-zinc-100 dark:text-zinc-950 dark:hover:bg-zinc-200",
+    formButtonReset:
+      "rounded-xl border border-zinc-200 bg-white text-zinc-700 transition hover:bg-zinc-50 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-200",
+    badge: "rounded-full",
+  },
+} as const;
+
 function AccountMenu() {
   const clerk = useClerk();
   const { orgRole } = useAuth();
@@ -109,6 +174,7 @@ function AccountMenu() {
     userMemberships: true,
   });
   const [isOpen, setIsOpen] = useState(false);
+  const [isOrganizationProfileOpen, setIsOrganizationProfileOpen] = useState(false);
   const [isSwitchingWorkspace, setIsSwitchingWorkspace] = useState(false);
   const [isInviteDialogOpen, setIsInviteDialogOpen] = useState(false);
   const [inviteEmail, setInviteEmail] = useState("");
@@ -191,7 +257,7 @@ function AccountMenu() {
 
   function openOrganizationProfile() {
     setIsOpen(false);
-    clerk.openOrganizationProfile();
+    setIsOrganizationProfileOpen(true);
   }
 
   function openInviteDialog() {
@@ -397,6 +463,34 @@ function AccountMenu() {
           </div>
         </DialogContent>
       </Dialog>
+
+      <Dialog
+        open={isOrganizationProfileOpen}
+        onOpenChange={setIsOrganizationProfileOpen}
+      >
+        <DialogContent className="max-h-[calc(100vh-2rem)] overflow-auto p-0 sm:max-w-5xl" showCloseButton={false}>
+          <DialogHeader className="sr-only">
+            <DialogTitle>Manage organization</DialogTitle>
+            <DialogDescription>
+              Manage organization profile, members, roles, invitations, and security.
+            </DialogDescription>
+          </DialogHeader>
+          <OrganizationProfile appearance={organizationProfileAppearance} routing="hash">
+            <OrganizationProfile.Page label="general" />
+            <OrganizationProfile.Page label="members" />
+            <OrganizationProfile.Page
+              label="Security"
+              url="security"
+              labelIcon={<ShieldCheck className="h-4 w-4" />}
+            >
+              <OrganizationSecurityPanel
+                organization={organization as OrganizationSecurityResource | null}
+                organizationName={organization?.name ?? "this organization"}
+              />
+            </OrganizationProfile.Page>
+          </OrganizationProfile>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
@@ -428,6 +522,214 @@ function Avatar({
     >
       {!imageUrl && fallbackText}
     </span>
+  );
+}
+
+function OrganizationSecurityPanel({
+  organization,
+  organizationName,
+}: {
+  organization: OrganizationSecurityResource | null;
+  organizationName: string;
+}) {
+  const { sessionId } = useAuth();
+  const { user } = useUser();
+  const [admins, setAdmins] = useState<OrganizationSecurityMembership[]>([]);
+  const [sessions, setSessions] = useState<OrganizationSecuritySession[]>([]);
+  const [isLoadingAdmins, setIsLoadingAdmins] = useState(false);
+  const [isLoadingSessions, setIsLoadingSessions] = useState(false);
+  const [revokingSessionId, setRevokingSessionId] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadAdmins() {
+      if (!organization) {
+        setAdmins([]);
+        return;
+      }
+
+      try {
+        setIsLoadingAdmins(true);
+        const response = await organization.getMemberships({
+          pageSize: 10,
+          role: ["org:admin"],
+        });
+        if (!cancelled) setAdmins(response.data);
+      } catch {
+        if (!cancelled) setAdmins([]);
+      } finally {
+        if (!cancelled) setIsLoadingAdmins(false);
+      }
+    }
+
+    void loadAdmins();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [organization]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadSessions() {
+      if (!user) {
+        setSessions([]);
+        return;
+      }
+
+      try {
+        setIsLoadingSessions(true);
+        const nextSessions = await user.getSessions();
+        if (!cancelled) setSessions(nextSessions as OrganizationSecuritySession[]);
+      } catch {
+        if (!cancelled) setSessions([]);
+      } finally {
+        if (!cancelled) setIsLoadingSessions(false);
+      }
+    }
+
+    void loadSessions();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [user]);
+
+  async function revokeSession(targetSession: OrganizationSecuritySession) {
+    try {
+      setRevokingSessionId(targetSession.id);
+      await targetSession.revoke();
+      setSessions((current) => current.filter((session) => session.id !== targetSession.id));
+      toast.success("Session revoked");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Failed to revoke session");
+    } finally {
+      setRevokingSessionId(null);
+    }
+  }
+
+  return (
+    <div className="space-y-5 pb-5">
+      <section className="rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm dark:border-zinc-800 dark:bg-zinc-950">
+        <div>
+          <p className="text-xs font-semibold uppercase text-zinc-500 dark:text-zinc-400">Admins</p>
+          <h2 className="mt-1 text-2xl font-semibold text-zinc-950 dark:text-zinc-50">Who controls {organizationName}</h2>
+          <p className="mt-2 text-sm leading-6 text-zinc-500 dark:text-zinc-400">
+            Admins can manage members, roles, invitations, profile settings, and organization deletion.
+          </p>
+        </div>
+        <div className="mt-4 space-y-2">
+          {isLoadingAdmins ? (
+            <div className="rounded-xl border border-dashed border-zinc-200 px-4 py-3 text-sm text-zinc-500 dark:border-zinc-800 dark:text-zinc-400">Loading admins...</div>
+          ) : admins.length > 0 ? (
+            admins.map((membership) => {
+              const userData = membership.publicUserData;
+              const fullName = [userData?.firstName, userData?.lastName].filter(Boolean).join(" ");
+              const displayName = fullName || userData?.username || userData?.identifier || "Admin";
+              const imageUrl = userData?.imageUrl;
+
+              return (
+                <div key={membership.id} className="flex items-center gap-3 rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-3 dark:border-zinc-800 dark:bg-zinc-900">
+                  <span
+                    className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-zinc-950 bg-cover bg-center text-sm font-semibold text-white dark:bg-zinc-100 dark:text-zinc-950"
+                    style={imageUrl ? { backgroundImage: `url(${imageUrl})` } : undefined}
+                  >
+                    {!imageUrl && displayName.charAt(0).toUpperCase()}
+                  </span>
+                  <span className="min-w-0 flex-1">
+                    <strong className="block truncate text-sm font-semibold text-zinc-950 dark:text-zinc-50">{displayName}</strong>
+                    {userData?.identifier && <small className="block truncate text-xs text-zinc-500 dark:text-zinc-400">{userData.identifier}</small>}
+                  </span>
+                  <em className="rounded-full bg-zinc-950 px-2.5 py-1 text-xs font-semibold not-italic text-white dark:bg-zinc-100 dark:text-zinc-950">{membership.roleName || "Admin"}</em>
+                </div>
+              );
+            })
+          ) : (
+            <div className="rounded-xl border border-dashed border-zinc-200 px-4 py-3 text-sm text-zinc-500 dark:border-zinc-800 dark:text-zinc-400">No admins found from Clerk.</div>
+          )}
+        </div>
+      </section>
+
+      <section className="rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm dark:border-zinc-800 dark:bg-zinc-950">
+        <div className="flex items-start gap-3">
+          <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-zinc-100 text-zinc-700 dark:bg-zinc-900 dark:text-zinc-200">
+            <Monitor className="h-5 w-5" />
+          </div>
+          <div>
+            <p className="text-xs font-semibold uppercase text-zinc-500 dark:text-zinc-400">Active devices</p>
+            <h2 className="mt-1 text-2xl font-semibold text-zinc-950 dark:text-zinc-50">Your signed-in sessions</h2>
+            <p className="mt-2 text-sm leading-6 text-zinc-500 dark:text-zinc-400">
+              These are your real Clerk sessions. Devices are tied to your account, not the organization.
+            </p>
+          </div>
+        </div>
+        <div className="mt-4 grid gap-2">
+          {isLoadingSessions ? (
+            <div className="rounded-xl border border-dashed border-zinc-200 px-4 py-3 text-sm text-zinc-500 dark:border-zinc-800 dark:text-zinc-400">Loading devices...</div>
+          ) : sessions.length > 0 ? (
+            sessions.map((session) => {
+              const activity = session.latestActivity;
+              const isCurrentSession = session.id === sessionId;
+              const browser = [activity.browserName, activity.browserVersion].filter(Boolean).join(" ");
+              const location = [activity.city, activity.country].filter(Boolean).join(", ");
+
+              return (
+                <div key={session.id} className="flex flex-col gap-3 rounded-xl border border-zinc-200 bg-zinc-50 px-4 py-3 dark:border-zinc-800 dark:bg-zinc-900 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="min-w-0">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <p className="text-sm font-semibold text-zinc-950 dark:text-zinc-50">
+                        {activity.deviceType || (activity.isMobile ? "Mobile device" : "Desktop device")}
+                      </p>
+                      {isCurrentSession && (
+                        <span className="rounded-full bg-zinc-950 px-2 py-0.5 text-[11px] font-semibold text-white dark:bg-zinc-100 dark:text-zinc-950">
+                          This device
+                        </span>
+                      )}
+                    </div>
+                    <p className="mt-1 text-xs text-zinc-500 dark:text-zinc-400">
+                      {[browser || "Unknown browser", activity.ipAddress, location].filter(Boolean).join(" · ")}
+                    </p>
+                    <p className="mt-1 text-xs text-zinc-400 dark:text-zinc-500">
+                      Last active {new Date(session.lastActiveAt).toLocaleString()}
+                    </p>
+                  </div>
+                  {!isCurrentSession && (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="rounded-xl"
+                      disabled={revokingSessionId === session.id}
+                      onClick={() => void revokeSession(session)}
+                    >
+                      {revokingSessionId === session.id ? "Revoking..." : "Revoke"}
+                    </Button>
+                  )}
+                </div>
+              );
+            })
+          ) : (
+            <div className="rounded-xl border border-dashed border-zinc-200 px-4 py-3 text-sm text-zinc-500 dark:border-zinc-800 dark:text-zinc-400">No active devices found.</div>
+          )}
+        </div>
+      </section>
+
+      <section className="rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm dark:border-zinc-800 dark:bg-zinc-950">
+        <p className="text-xs font-semibold uppercase text-zinc-500 dark:text-zinc-400">Password and two-step verification</p>
+        <div className="mt-3 grid gap-2 sm:grid-cols-2">
+          <div className="rounded-xl bg-zinc-50 px-4 py-3 dark:bg-zinc-900">
+            <p className="text-sm font-semibold text-zinc-950 dark:text-zinc-50">Password</p>
+            <p className="mt-1 text-xs text-zinc-500 dark:text-zinc-400">{user?.passwordEnabled ? "Enabled" : "Not enabled"}</p>
+          </div>
+          <div className="rounded-xl bg-zinc-50 px-4 py-3 dark:bg-zinc-900">
+            <p className="text-sm font-semibold text-zinc-950 dark:text-zinc-50">Two-step verification</p>
+            <p className="mt-1 text-xs text-zinc-500 dark:text-zinc-400">{user?.twoFactorEnabled ? "Enabled" : "Not enabled"}</p>
+          </div>
+        </div>
+      </section>
+    </div>
   );
 }
 
