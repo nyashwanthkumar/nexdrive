@@ -119,7 +119,7 @@ export function UploadButton({
 
   async function onSubmit(values: z.infer<typeof formSchema>) {
     try {
-      setUploadStatus("Preparing upload...");
+      setUploadStatus("Uploading...");
       if (!orgId) {
         toast.error("Organization or user not found");
         return;
@@ -129,7 +129,7 @@ export function UploadButton({
       const selectedFile = values.file;
       const fileType = getFileType(selectedFile);
 
-      setUploadStatus("Uploading file...");
+      setUploadStatus("Uploading...");
       const result = await fetch(postUrl, {
         method: "POST",
         headers: {
@@ -144,7 +144,7 @@ export function UploadButton({
 
       const { storageId } = await result.json();
 
-      setUploadStatus("Saving file...");
+      setUploadStatus("Uploading...");
       await createFile({
         name: values.title,
         orgId,
@@ -313,7 +313,7 @@ export function UploadButton({
                 Cancel
               </Button>
               <Button type="submit" disabled={form.formState.isSubmitting}>
-                {uploadStatus || (form.formState.isSubmitting ? "Uploading..." : "Upload")}
+                {form.formState.isSubmitting || uploadStatus ? "Uploading..." : "Upload"}
               </Button>
             </div>
           </form>
