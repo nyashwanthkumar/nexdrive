@@ -27,7 +27,7 @@ export function getViewMeta(view: ViewType, currentFolderName?: string | null): 
   }
 
   const featureMeta: Record<ViewType, ViewMeta> = {
-    recent: { label: "Recent", description: "Latest files in this workspace" },
+    recent: { label: "All files", description: "Everything in this workspace, sorted by latest first" },
     starred: { label: "Starred", description: "Files you have starred" },
     folders: { label: "Folders", description: "Create folders and organize files" },
     images: { label: "Images", description: "Image files in this workspace" },

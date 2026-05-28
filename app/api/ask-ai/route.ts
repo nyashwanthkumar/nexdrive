@@ -48,6 +48,27 @@ async function resolveOpenAiApiKey() {
   }
 }
 
+async function resolveGeminiApiKey() {
+  if (process.env.GEMINI_API_KEY) {
+    return process.env.GEMINI_API_KEY.trim();
+  }
+
+  if (process.env.NEXT_PUBLIC_GEMINI_API_KEY) {
+    return process.env.NEXT_PUBLIC_GEMINI_API_KEY.trim();
+  }
+
+  try {
+    const envPath = path.join(process.cwd(), ".env.local");
+    const contents = await readFile(envPath, "utf8");
+    const match =
+      contents.match(/^GEMINI_API_KEY=(.+)$/m) ??
+      contents.match(/^NEXT_PUBLIC_GEMINI_API_KEY=(.+)$/m);
+    return match?.[1]?.trim() || "";
+  } catch {
+    return "";
+  }
+}
+
 function extractOutputText(payload: unknown) {
   const direct = (payload as { output_text?: string })?.output_text;
   if (typeof direct === "string" && direct.trim()) return direct.trim();
@@ -64,6 +85,19 @@ function extractOutputText(payload: unknown) {
     .flatMap((item) => item.content ?? [])
     .filter((item) => item.type === "output_text")
     .map((item) => item.text ?? "")
+    .join("\n")
+    .trim();
+}
+
+function extractGeminiText(payload: unknown) {
+  const candidates = (payload as { candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }> })
+    ?.candidates;
+
+  if (!Array.isArray(candidates)) return "";
+
+  return candidates
+    .flatMap((candidate) => candidate.content?.parts ?? [])
+    .map((part) => part.text ?? "")
     .join("\n")
     .trim();
 }
@@ -150,14 +184,8 @@ export async function POST(request: Request) {
   try {
     await connection();
     const body = (await request.json()) as AskAiRequest;
-    const apiKey = await resolveOpenAiApiKey();
-
-    if (!apiKey) {
-      return NextResponse.json(
-        { error: "OPENAI_API_KEY is not configured" },
-        { status: 503 }
-      );
-    }
+    const openAiApiKey = await resolveOpenAiApiKey();
+    const geminiApiKey = await resolveGeminiApiKey();
 
     const conversation = (body.messages ?? [])
       .slice(-8)
@@ -196,45 +224,114 @@ export async function POST(request: Request) {
       `Latest user question: ${body.question}`,
     ].join("\n");
 
-    const response = await fetch("https://api.openai.com/v1/responses", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${apiKey}`,
-      },
-      body: JSON.stringify({
-        model: "gpt-4.1-mini",
-        input: [
-          {
-            role: "user",
-            content: [
-              { type: "input_text", text: prompt },
-              ...fileInputs,
-            ],
-          },
-        ],
-      }),
-    });
+    if (openAiApiKey) {
+      const openAiResponse = await fetch("https://api.openai.com/v1/responses", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${openAiApiKey}`,
+        },
+        body: JSON.stringify({
+          model: "gpt-4.1-mini",
+          input: [
+            {
+              role: "user",
+              content: [
+                { type: "input_text", text: prompt },
+                ...fileInputs,
+              ],
+            },
+          ],
+        }),
+      });
 
-    if (!response.ok) {
-      const errorText = await response.text();
+      if (openAiResponse.ok) {
+        const payload = await openAiResponse.json();
+        const message = extractOutputText(payload);
+
+        if (message) {
+          return NextResponse.json({ message });
+        }
+      } else {
+        const errorText = await openAiResponse.text();
+        if (!errorText.includes("insufficient_quota") && !errorText.includes("billing")) {
+          return NextResponse.json(
+            { error: errorText || "OpenAI request failed" },
+            { status: 502 }
+          );
+        }
+      }
+    }
+
+    if (!geminiApiKey) {
       return NextResponse.json(
-        { error: errorText || "OpenAI request failed" },
+        { error: "No working AI provider key is configured" },
+        { status: 503 }
+      );
+    }
+
+    const geminiParts: Array<Record<string, unknown>> = [{ text: prompt }];
+    for (const input of fileInputs) {
+      if (input.type === "input_text") {
+        geminiParts.push({ text: String(input.text ?? "") });
+      }
+      if (input.type === "input_image") {
+        const imageUrl = String(input.image_url ?? "");
+        const match = imageUrl.match(/^data:(.+);base64,(.+)$/);
+        if (match) {
+          geminiParts.push({
+            inline_data: {
+              mime_type: match[1],
+              data: match[2],
+            },
+          });
+        }
+      }
+      if (input.type === "input_file" && relevantFiles.length > 0) {
+        const file = relevantFiles.find((candidate) => candidate.url === input.file_url);
+        if (file) {
+          geminiParts.push({ text: `Attached file: ${file.name}` });
+        }
+      }
+    }
+
+    const geminiResponse = await fetch(
+      "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-goog-api-key": geminiApiKey,
+        },
+        body: JSON.stringify({
+          contents: [
+            {
+              parts: geminiParts,
+            },
+          ],
+        }),
+      }
+    );
+
+    if (!geminiResponse.ok) {
+      const errorText = await geminiResponse.text();
+      return NextResponse.json(
+        { error: errorText || "Gemini request failed" },
         { status: 502 }
       );
     }
 
-    const payload = await response.json();
-    const message = extractOutputText(payload);
+    const geminiPayload = await geminiResponse.json();
+    const geminiMessage = extractGeminiText(geminiPayload);
 
-    if (!message) {
+    if (!geminiMessage) {
       return NextResponse.json(
-        { error: "OpenAI returned an empty response" },
+        { error: "Gemini returned an empty response" },
         { status: 502 }
       );
     }
 
-    return NextResponse.json({ message });
+    return NextResponse.json({ message: geminiMessage });
   } catch (error) {
     return NextResponse.json(
       {

@@ -20,7 +20,6 @@ import {
   Bot,
   Building2,
   Check,
-  Clock,
   Download,
   Eye,
   Files,
@@ -37,7 +36,9 @@ import {
   Plus,
   RotateCcw,
   Search,
+  SendHorizontal,
   Share2,
+  Sparkles,
   Star,
   Sun,
   Trash2,
@@ -484,7 +485,7 @@ export default function DashboardPage() {
       } catch (error) {
         assistantMessage =
           error instanceof Error
-            ? `I could not reach the AI service.\n\n${error.message}\n\nIf you just added GEMINI_API_KEY, restart the dev server once and try again.`
+            ? `I could not reach the AI service.\n\n${error.message}\n\nIf you just updated the API key, restart the dev server once and try again.`
             : "I could not reach the AI service. Restart the dev server and try again.";
       }
 
@@ -872,8 +873,8 @@ export default function DashboardPage() {
               </div>
               <SidebarItemFeature
                 active={activeView === "recent"}
-                icon={<Clock className="h-4 w-4" />}
-                label="Recent"
+                icon={<Files className="h-4 w-4" />}
+                label="All files"
                 onClick={() => {
                   setActiveView("recent");
                   setCurrentFolderId(null);
@@ -1023,7 +1024,7 @@ export default function DashboardPage() {
           <section className="flex flex-col gap-4 px-4 py-4 sm:gap-5 sm:px-6 sm:py-6">
 
             {/* Search */}
-            <div className="flex items-center gap-3 rounded-2xl border border-zinc-200/80 bg-white px-4 py-2.5 shadow-sm shadow-zinc-200/40 dark:border-zinc-800 dark:bg-zinc-900 dark:shadow-none">
+            <div className="nexdrive-fade-up flex items-center gap-3 rounded-2xl border border-zinc-200/80 bg-white px-4 py-2.5 shadow-sm shadow-zinc-200/40 dark:border-zinc-800 dark:bg-zinc-900 dark:shadow-none">
               <Search className="h-4 w-4 shrink-0 text-zinc-400" />
               <Input
                 value={search}
@@ -1034,7 +1035,7 @@ export default function DashboardPage() {
             </div>
 
             {/* Header */}
-            <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="nexdrive-fade-up flex flex-wrap items-center justify-between gap-3 [animation-delay:40ms]">
               <div>
                 <h1 className="text-xl font-semibold tracking-tight text-zinc-950 dark:text-zinc-50">{viewMeta.label}</h1>
                 <p className="mt-0.5 text-xs text-zinc-500 dark:text-zinc-400">{viewMeta.description}</p>
@@ -1104,7 +1105,7 @@ export default function DashboardPage() {
             </div>
 
             {activeView === "folders" && !currentFolderId && (
-              <div className="flex flex-col gap-3 rounded-2xl border border-zinc-200/80 bg-white px-4 py-4 shadow-sm shadow-zinc-200/40 dark:border-zinc-800 dark:bg-zinc-900 dark:shadow-none sm:flex-row sm:items-center sm:justify-between">
+              <div className="nexdrive-fade-up flex flex-col gap-3 rounded-2xl border border-zinc-200/80 bg-white px-4 py-4 shadow-sm shadow-zinc-200/40 dark:border-zinc-800 dark:bg-zinc-900 dark:shadow-none sm:flex-row sm:items-center sm:justify-between">
                 <div>
                   <h2 className="text-sm font-semibold text-zinc-900 dark:text-zinc-50">
                     Folders
@@ -1147,7 +1148,7 @@ export default function DashboardPage() {
               displayedFiles.length === 0 &&
               visibleFolders.length === 0 &&
               (activeView !== "activity" || (activityLogs ?? []).length === 0) && (
-              <div className="flex flex-1 flex-col items-center justify-center gap-3 py-24 text-center">
+              <div className="nexdrive-fade-up flex flex-1 flex-col items-center justify-center gap-3 py-24 text-center">
                 <div className="flex h-11 w-11 items-center justify-center rounded-lg border border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-900">
                   {activeView === "trash" ? (
                     <Trash2 className="h-5 w-5 text-zinc-400" />
@@ -1225,11 +1226,12 @@ export default function DashboardPage() {
             )}
 
             {!isLoading && activeView === "activity" && (activityLogs ?? []).length > 0 && (
-              <div className="overflow-hidden rounded-2xl border border-zinc-200/80 bg-white shadow-sm shadow-zinc-200/40 dark:border-zinc-800 dark:bg-zinc-900 dark:shadow-none">
-                {(activityLogs ?? []).map((item) => (
+              <div className="nexdrive-fade-up overflow-hidden rounded-2xl border border-zinc-200/80 bg-white shadow-sm shadow-zinc-200/40 dark:border-zinc-800 dark:bg-zinc-900 dark:shadow-none">
+                {(activityLogs ?? []).map((item, index) => (
                   <div
                     key={item._id}
-                    className="flex items-start gap-3 border-b border-zinc-100 px-5 py-4 last:border-b-0"
+                    style={{ "--nexdrive-item-delay": `${Math.min(index * 24, 160)}ms` } as React.CSSProperties}
+                    className="nexdrive-item flex items-start gap-3 border-b border-zinc-100 px-5 py-4 last:border-b-0"
                   >
                     <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-zinc-100 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300">
                       <Activity className="h-4 w-4" />
@@ -1252,9 +1254,10 @@ export default function DashboardPage() {
 
             {!isLoading && visibleFolders.length > 0 && displayMode === "grid" && (
               <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-                {visibleFolders.map((folder) => (
+                {visibleFolders.map((folder, index) => (
                   <div
                     key={folder._id}
+                    style={{ "--nexdrive-item-delay": `${Math.min(index * 24, 160)}ms` } as React.CSSProperties}
                     role="button"
                     tabIndex={0}
                     onClick={() => handleFolderSurfaceClick(folder)}
@@ -1264,7 +1267,7 @@ export default function DashboardPage() {
                         handleFolderSurfaceClick(folder);
                       }
                     }}
-                    className={`group relative flex h-20 items-center gap-3 rounded-2xl border px-4 text-left shadow-sm transition-all duration-150 ${
+                    className={`nexdrive-item group relative flex h-20 items-center gap-3 rounded-2xl border px-4 text-left shadow-sm transition-all duration-200 ease-out ${
                       selectedFolderIds.includes(folder._id)
                         ? "border-sky-200 bg-sky-50/80 shadow-sky-100/80 dark:border-sky-500/40 dark:bg-sky-500/10 dark:shadow-none"
                         : "border-zinc-200/80 bg-white shadow-zinc-200/40 hover:-translate-y-0.5 hover:border-zinc-300 hover:shadow-md dark:border-zinc-800 dark:bg-zinc-900 dark:shadow-none dark:hover:border-zinc-700"
@@ -1338,12 +1341,13 @@ export default function DashboardPage() {
 
             {!isLoading && visibleFolders.length > 0 && displayMode === "list" && (
               <div className="overflow-hidden rounded-2xl border border-zinc-200/80 bg-white shadow-sm shadow-zinc-200/40 dark:border-zinc-800 dark:bg-zinc-900 dark:shadow-none">
-                {visibleFolders.map((folder) => (
+                {visibleFolders.map((folder, index) => (
                   <div
                     key={folder._id}
+                    style={{ "--nexdrive-item-delay": `${Math.min(index * 18, 140)}ms` } as React.CSSProperties}
                     role="button"
                     tabIndex={0}
-                    className={`flex flex-col gap-3 border-b border-zinc-100 px-5 py-4 transition-colors last:border-b-0 dark:border-zinc-800 sm:flex-row sm:items-center sm:justify-between ${
+                    className={`nexdrive-item flex flex-col gap-3 border-b border-zinc-100 px-5 py-4 transition-all duration-200 ease-out last:border-b-0 dark:border-zinc-800 sm:flex-row sm:items-center sm:justify-between ${
                       selectedFolderIds.includes(folder._id)
                         ? "bg-sky-50/80 dark:bg-sky-500/10"
                         : "hover:bg-zinc-50/70 dark:hover:bg-zinc-800/70"
@@ -1428,12 +1432,13 @@ export default function DashboardPage() {
             {/* File list */}
             {!isLoading && displayedFiles.length > 0 && displayMode === "list" && (
               <div className="overflow-hidden rounded-2xl border border-zinc-200/80 bg-white shadow-sm shadow-zinc-200/40 dark:border-zinc-800 dark:bg-zinc-900 dark:shadow-none">
-                {displayedFiles.map((file) => (
+                {displayedFiles.map((file, index) => (
                   <div
                     key={file._id}
+                    style={{ "--nexdrive-item-delay": `${Math.min(index * 18, 140)}ms` } as React.CSSProperties}
                     role="button"
                     tabIndex={0}
-                    className={`flex flex-col gap-3 border-b border-zinc-100 px-5 py-4 transition-colors last:border-b-0 dark:border-zinc-800 lg:flex-row lg:items-center lg:justify-between ${
+                    className={`nexdrive-item flex flex-col gap-3 border-b border-zinc-100 px-5 py-4 transition-all duration-200 ease-out last:border-b-0 dark:border-zinc-800 lg:flex-row lg:items-center lg:justify-between ${
                       selectedFileIds.includes(file._id)
                         ? "bg-sky-50/80 dark:bg-sky-500/10"
                         : "hover:bg-zinc-50/70 dark:hover:bg-zinc-800/70"
@@ -1589,9 +1594,10 @@ export default function DashboardPage() {
             {/* File grid */}
             {!isLoading && displayedFiles.length > 0 && displayMode === "grid" && (
               <div className="grid gap-3 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
-                {displayedFiles.map((file) => (
+                {displayedFiles.map((file, index) => (
                   <div
                     key={file._id}
+                    style={{ "--nexdrive-item-delay": `${Math.min(index * 24, 180)}ms` } as React.CSSProperties}
                     role="button"
                     tabIndex={0}
                     onClick={() => handleFileSurfaceClick(file)}
@@ -1601,7 +1607,7 @@ export default function DashboardPage() {
                         handleFileSurfaceClick(file);
                       }
                     }}
-                    className={`group relative flex flex-col overflow-hidden rounded-2xl border transition-all duration-150 ${
+                    className={`nexdrive-item group relative flex flex-col overflow-hidden rounded-2xl border transition-all duration-200 ease-out ${
                       selectedFileIds.includes(file._id)
                         ? "border-sky-200 bg-sky-50/80 shadow-md shadow-sky-100/70 dark:border-sky-500/40 dark:bg-sky-500/10 dark:shadow-none"
                         : "border-zinc-200/80 bg-white shadow-sm shadow-zinc-200/40 hover:-translate-y-0.5 hover:border-zinc-300 hover:shadow-md hover:shadow-zinc-200/70 dark:border-zinc-800 dark:bg-zinc-900 dark:shadow-none dark:hover:border-zinc-700"
@@ -1795,114 +1801,142 @@ export default function DashboardPage() {
           }
         }}
       >
-        <DialogContent className="gap-5 p-5 sm:max-w-3xl">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2 text-xl">
-              <Bot className="h-5 w-5" />
-              Ask AI
-            </DialogTitle>
-            <DialogDescription>
-              Get quick help from the current {workspaceTitle} workspace without leaving this view.
-            </DialogDescription>
-          </DialogHeader>
-
-          <div className="flex flex-wrap gap-2">
-            {[
-              "Summarize this view",
-              "Find possible duplicates",
-              "Suggest better organization",
-              "What should I clean up first?",
-              "Review sharing status",
-            ].map((prompt) => (
-              <button
-                key={prompt}
-                type="button"
-                onClick={() => void runAskAi(prompt)}
-                className="rounded-full border border-zinc-200 bg-white px-3 py-2 text-xs font-medium text-zinc-600 transition hover:border-zinc-300 hover:bg-zinc-50 hover:text-zinc-900 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-300 dark:hover:bg-zinc-800 dark:hover:text-zinc-100"
-              >
-                {prompt}
-              </button>
-            ))}
+        <DialogContent className="max-h-[min(760px,calc(100vh-2rem))] gap-0 overflow-hidden p-0 sm:max-w-3xl">
+          <div className="nexdrive-fade-up border-b border-zinc-100 px-5 pb-4 pt-5 dark:border-zinc-800 sm:px-6">
+            <DialogHeader className="gap-2 pr-10">
+              <DialogTitle className="flex items-center gap-3 text-xl">
+                <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-zinc-950 text-white shadow-sm dark:bg-zinc-100 dark:text-zinc-950">
+                  <Sparkles className="h-4 w-4" />
+                </span>
+                Ask AI
+              </DialogTitle>
+              <DialogDescription>
+                Get quick help from the current {workspaceTitle} workspace without leaving this view.
+              </DialogDescription>
+            </DialogHeader>
           </div>
 
-          <div className="rounded-2xl border border-zinc-200 bg-zinc-50/70 p-3 dark:border-zinc-800 dark:bg-zinc-900/70">
-            <div className="max-h-[420px] space-y-3 overflow-y-auto pr-1">
-              {askAiMessages.length === 0 ? (
-                <div className="rounded-2xl border border-dashed border-zinc-200 bg-white/80 px-4 py-5 text-sm text-zinc-500 dark:border-zinc-800 dark:bg-zinc-950/70 dark:text-zinc-400">
-                  Ask about files, folders, duplicates, storage, sharing, durations, or how to organize this workspace.
-                </div>
-              ) : (
-                askAiMessages.map((message) => (
-                  <div
-                    key={message.id}
-                    className={`flex ${message.role === "user" ? "justify-end" : "justify-start"}`}
-                  >
-                    <div
-                      className={`max-w-[85%] rounded-2xl px-4 py-3 text-sm whitespace-pre-wrap ${
-                        message.role === "user"
-                          ? "bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-950"
-                          : "border border-zinc-200 bg-white text-zinc-700 dark:border-zinc-800 dark:bg-zinc-950 dark:text-zinc-200"
-                      }`}
-                    >
-                      {message.content}
+          <div className="flex min-h-0 flex-1 flex-col gap-4 bg-zinc-50/55 px-5 py-4 dark:bg-zinc-950/40 sm:px-6">
+            <div className="nexdrive-fade-up flex flex-wrap gap-2 [animation-delay:40ms]">
+              {[
+                "Summarize this view",
+                "Find duplicates",
+                "Organize better",
+                "Clean up first",
+                "Review sharing",
+              ].map((prompt, index) => (
+                <button
+                  key={prompt}
+                  type="button"
+                  disabled={isAskAiLoading}
+                  onClick={() => void runAskAi(prompt)}
+                  style={{ "--nexdrive-item-delay": `${index * 36}ms` } as React.CSSProperties}
+                  className="nexdrive-item inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-zinc-200 bg-white px-3.5 text-xs font-medium text-zinc-600 shadow-sm shadow-zinc-200/40 transition-all duration-200 ease-out hover:-translate-y-0.5 hover:border-zinc-300 hover:text-zinc-950 hover:shadow-md disabled:cursor-not-allowed disabled:opacity-50 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-300 dark:shadow-none dark:hover:border-zinc-700 dark:hover:text-zinc-50"
+                >
+                  <Sparkles className="h-3.5 w-3.5 text-zinc-400" />
+                  {prompt}
+                </button>
+              ))}
+            </div>
+
+            {(askAiMessages.length > 0 || isAskAiLoading) && (
+              <div className="nexdrive-soft-scale rounded-2xl border border-zinc-200 bg-white shadow-sm shadow-zinc-200/50 dark:border-zinc-800 dark:bg-zinc-900 dark:shadow-none">
+                <div className="max-h-[320px] min-h-[180px] space-y-3 overflow-y-auto p-3 sm:p-4">
+                  {askAiMessages.map((message, index) => (
+                      <div
+                        key={message.id}
+                        style={{ "--nexdrive-item-delay": `${Math.min(index * 28, 160)}ms` } as React.CSSProperties}
+                        className={`nexdrive-item flex items-end gap-2 ${
+                          message.role === "user" ? "justify-end" : "justify-start"
+                        }`}
+                      >
+                        {message.role === "assistant" && (
+                          <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-zinc-100 text-zinc-500 dark:bg-zinc-800 dark:text-zinc-300">
+                            <Bot className="h-3.5 w-3.5" />
+                          </span>
+                        )}
+                        <div
+                          className={`max-w-[82%] rounded-2xl px-4 py-3 text-sm leading-6 shadow-sm whitespace-pre-wrap ${
+                            message.role === "user"
+                              ? "rounded-br-md bg-zinc-950 text-white shadow-zinc-300/40 dark:bg-zinc-100 dark:text-zinc-950 dark:shadow-none"
+                              : "rounded-bl-md border border-zinc-200 bg-zinc-50 text-zinc-700 shadow-zinc-200/40 dark:border-zinc-800 dark:bg-zinc-950 dark:text-zinc-200 dark:shadow-none"
+                          }`}
+                        >
+                          {message.content}
+                        </div>
+                      </div>
+                    ))}
+
+                  {isAskAiLoading ? (
+                    <div className="nexdrive-item flex items-end gap-2">
+                      <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-zinc-100 text-zinc-500 dark:bg-zinc-800 dark:text-zinc-300">
+                        <Bot className="h-3.5 w-3.5" />
+                      </span>
+                      <div className="flex items-center gap-2 rounded-2xl rounded-bl-md border border-zinc-200 bg-zinc-50 px-4 py-3 text-sm text-zinc-500 shadow-sm shadow-zinc-200/40 dark:border-zinc-800 dark:bg-zinc-950 dark:text-zinc-400 dark:shadow-none">
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                        Thinking...
+                      </div>
                     </div>
-                  </div>
-                ))
-              )}
+                  ) : null}
+                </div>
+              </div>
+            )}
 
-              {isAskAiLoading ? (
-                <div className="flex justify-start">
-                  <div className="flex items-center gap-2 rounded-2xl border border-zinc-200 bg-white px-4 py-3 text-sm text-zinc-500 dark:border-zinc-800 dark:bg-zinc-950 dark:text-zinc-400">
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                    Thinking...
+            <form
+              onSubmit={(event) => {
+                event.preventDefault();
+                void runAskAi(askAiQuestion.trim() || "Summarize this view");
+              }}
+              className="nexdrive-fade-up space-y-3 [animation-delay:80ms]"
+            >
+              <div className="rounded-2xl border border-zinc-200 bg-white p-2 shadow-sm shadow-zinc-200/50 transition-all duration-200 focus-within:border-zinc-400 focus-within:ring-4 focus-within:ring-zinc-100 dark:border-zinc-800 dark:bg-zinc-900 dark:shadow-none dark:focus-within:border-zinc-600 dark:focus-within:ring-zinc-800/70">
+                <textarea
+                  id="ask-ai-question"
+                  value={askAiQuestion}
+                  onChange={(event) => setAskAiQuestion(event.target.value)}
+                  rows={askAiMessages.length > 0 || isAskAiLoading ? 3 : 8}
+                  placeholder="Ask about this workspace..."
+                  className={`w-full resize-none bg-transparent px-2 py-2 text-sm leading-6 text-zinc-800 outline-none placeholder:text-zinc-400 dark:text-zinc-100 dark:placeholder:text-zinc-500 ${
+                    askAiMessages.length > 0 || isAskAiLoading
+                      ? "max-h-36 min-h-24"
+                      : "max-h-[320px] min-h-[220px] sm:min-h-[260px]"
+                  }`}
+                />
+                <div className="flex items-center justify-between gap-2 border-t border-zinc-100 px-1 pt-2 dark:border-zinc-800">
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="rounded-xl text-zinc-500 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-100"
+                    onClick={() => setAskAiMessages([])}
+                    disabled={isAskAiLoading || askAiMessages.length === 0}
+                  >
+                    Clear
+                  </Button>
+                  <div className="flex items-center gap-2">
+                    <Button type="button" variant="outline" size="sm" className="rounded-xl" onClick={() => setIsAskAiOpen(false)}>
+                      Close
+                    </Button>
+                    <Button type="submit" size="sm" className="rounded-xl px-3" disabled={isAskAiLoading}>
+                      {isAskAiLoading ? (
+                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      ) : (
+                        <SendHorizontal className="h-3.5 w-3.5" />
+                      )}
+                      {isAskAiLoading ? "Thinking" : "Send"}
+                    </Button>
                   </div>
                 </div>
-              ) : null}
-            </div>
-          </div>
-
-          <form
-            onSubmit={(event) => {
-              event.preventDefault();
-              void runAskAi(askAiQuestion.trim() || "Summarize this view");
-            }}
-            className="space-y-3"
-          >
-            <textarea
-              id="ask-ai-question"
-              value={askAiQuestion}
-              onChange={(event) => setAskAiQuestion(event.target.value)}
-              rows={3}
-              placeholder="Ask follow-up questions about this workspace..."
-              className="w-full rounded-2xl border border-zinc-200 bg-white px-4 py-3 text-sm text-zinc-800 outline-none transition focus:border-zinc-400 focus:ring-2 focus:ring-zinc-100 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-100 dark:focus:border-zinc-600 dark:focus:ring-zinc-800"
-            />
-
-            <div className="flex items-center justify-between gap-2">
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => setAskAiMessages([])}
-                disabled={isAskAiLoading || askAiMessages.length === 0}
-              >
-                Clear chat
-              </Button>
-              <div className="flex items-center gap-2">
-                <Button type="button" variant="outline" onClick={() => setIsAskAiOpen(false)}>
-                  Close
-                </Button>
-                <Button type="submit" disabled={isAskAiLoading}>
-                  {isAskAiLoading ? "Thinking..." : "Send"}
-                </Button>
               </div>
-            </div>
-          </form>
+            </form>
+          </div>
         </DialogContent>
       </Dialog>
 
       {/* Preview Modal */}
       {previewFile && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm"
+          className="nexdrive-soft-scale fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm"
           onClick={() => setPreviewFile(null)}
         >
           <div
