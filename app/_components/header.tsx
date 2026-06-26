@@ -81,8 +81,13 @@ type OrganizationSecuritySession = {
 export function Header() {
   const { isSignedIn } = useAuth();
   const pathname = usePathname();
+  const isHomePage = pathname === "/";
   const showHeaderSignIn = pathname !== "/";
   const isDashboard = pathname === "/dashboard";
+
+  if (isHomePage) {
+    return null;
+  }
 
   function openAskAi() {
     if (isDashboard) {
