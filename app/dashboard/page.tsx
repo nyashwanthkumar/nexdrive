@@ -18,7 +18,6 @@ import type { Id } from "@/convex/_generated/dataModel";
 import {
   Activity,
   Bot,
-  Building2,
   Check,
   Download,
   Eye,
@@ -42,7 +41,6 @@ import {
   Star,
   Sun,
   Trash2,
-  User,
   Video,
   X,
 } from "lucide-react";
@@ -989,31 +987,6 @@ export default function DashboardPage() {
                 </div>
                 <div className="mt-1 text-[11px] text-zinc-400 dark:text-zinc-500">
                   {activeShares.length} active shares
-                </div>
-              </div>
-            </div>
-
-            <div className="hidden border-t border-zinc-100 pt-4 dark:border-zinc-800 lg:block">
-              <p className="mb-2 px-3 text-[10px] font-semibold uppercase tracking-widest text-zinc-400 dark:text-zinc-500">
-                Workspace
-              </p>
-              <div className="rounded-2xl border border-zinc-100 bg-zinc-50/80 px-3 py-3 dark:border-zinc-800 dark:bg-zinc-900">
-                <div className="flex items-center gap-2.5">
-                  <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-zinc-200 bg-white dark:border-zinc-700 dark:bg-zinc-950">
-                    {organization ? (
-                      <Building2 className="h-4 w-4 text-zinc-500" />
-                    ) : (
-                      <User className="h-4 w-4 text-zinc-500" />
-                    )}
-                  </div>
-                  <div className="min-w-0">
-                    <p className="truncate text-sm font-medium text-zinc-700 dark:text-zinc-200">
-                      {workspaceTitle}
-                    </p>
-                    <p className="text-[11px] text-zinc-400 dark:text-zinc-500">
-                      {organization ? "Organization workspace" : "Personal workspace"}
-                    </p>
-                  </div>
                 </div>
               </div>
             </div>

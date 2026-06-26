@@ -27,6 +27,7 @@ import {
   Bot,
   Building2,
   Check,
+  ChevronDown,
   ChevronRight,
   LogOut,
   Moon,
@@ -100,8 +101,8 @@ export function Header() {
 
   return (
     <header className="relative z-50 border-b border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-950">
-      <div className="mx-auto flex h-16 w-full items-center justify-between px-6">
-        <Link href="/" className="text-3xl font-medium text-zinc-900 dark:text-zinc-50">
+      <div className="mx-auto flex h-16 w-full items-center justify-between px-4 sm:px-6">
+        <Link href="/" className="text-2xl font-medium text-zinc-900 dark:text-zinc-50 sm:text-3xl">
           NexDrive
         </Link>
 
@@ -112,11 +113,11 @@ export function Header() {
               <Button
                 type="button"
                 variant="outline"
-                className="h-9 rounded-full px-4"
+                className="h-9 w-9 rounded-full px-0 sm:w-auto sm:px-4"
                 onClick={openAskAi}
               >
-                <Bot className="mr-2 h-4 w-4" />
-                Ask AI
+                <Bot className="h-4 w-4 sm:mr-2" />
+                <span className="hidden sm:inline">Ask AI</span>
               </Button>
               <AccountMenu />
             </>
@@ -211,6 +212,8 @@ function AccountMenu() {
   const name = user?.fullName ?? user?.username ?? "NexDrive user";
   const memberships = useMemo(() => userMemberships.data ?? [], [userMemberships.data]);
   const isOrgAdmin = orgRole === "org:admin" || orgRole === "admin";
+  const workspaceName = organization?.name ?? "Personal";
+  const workspaceLabel = organization ? "Organization" : "Personal workspace";
 
   function goToDashboard(url: string) {
     if (url.startsWith("https://") || url.startsWith("http://")) {
@@ -306,12 +309,27 @@ function AccountMenu() {
     <div ref={menuRef} className="relative">
       <button
         type="button"
-        aria-label="Open account menu"
+        aria-label={`Open workspace and account menu for ${workspaceName}`}
         aria-expanded={isOpen}
         onClick={() => setIsOpen((open) => !open)}
-        className="flex h-10 w-10 items-center justify-center rounded-full ring-2 ring-transparent transition hover:ring-zinc-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-400 dark:hover:ring-zinc-700"
+        className="flex h-10 max-w-[min(52vw,340px)] items-center gap-2 rounded-full border border-zinc-200 bg-white px-2 pr-2.5 text-left shadow-sm shadow-zinc-200/50 transition hover:bg-zinc-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-400 dark:border-zinc-800 dark:bg-zinc-900 dark:shadow-none dark:hover:bg-zinc-800"
       >
-        <Avatar imageUrl={avatarUrl} name={name} size="sm" />
+        <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-zinc-100 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300">
+          {organization ? <Building2 className="h-3.5 w-3.5" /> : <User className="h-3.5 w-3.5" />}
+        </span>
+        <span className="hidden min-w-0 flex-col sm:flex">
+          <span className="max-w-32 truncate text-sm font-semibold leading-4 text-zinc-900 dark:text-zinc-50">
+            {workspaceName}
+          </span>
+          <span className="hidden max-w-32 truncate text-[11px] leading-4 text-zinc-500 dark:text-zinc-400 lg:block">
+            {workspaceLabel}
+          </span>
+        </span>
+        <span className="hidden h-5 w-px bg-zinc-200 dark:bg-zinc-700 md:block" />
+        <span className="hidden md:block">
+          <Avatar imageUrl={avatarUrl} name={name} size="sm" />
+        </span>
+        <ChevronDown className="hidden h-3.5 w-3.5 shrink-0 text-zinc-400 sm:block" />
       </button>
 
       {isOpen && (
