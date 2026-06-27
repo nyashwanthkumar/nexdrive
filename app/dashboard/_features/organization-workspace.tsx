@@ -64,10 +64,6 @@ type OrganizationWorkspaceResource = {
     pageSize?: number;
     status?: string[];
   }) => Promise<{ data: TeamInvitation[] }>;
-  inviteMember: (params: {
-    emailAddress: string;
-    role: WorkspaceRole;
-  }) => Promise<TeamInvitation>;
   updateMember: (params: {
     userId: string;
     role: WorkspaceRole;
@@ -168,7 +164,22 @@ export function OrganizationWorkspaceFeature({
 
     try {
       setIsSendingInvite(true);
-      await team.inviteMember({ emailAddress: email, role: inviteRole });
+      const response = await fetch("/api/organization/invitations", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          emailAddress: email,
+          role: inviteRole,
+        }),
+      });
+
+      if (!response.ok) {
+        const payload = (await response.json().catch(() => null)) as { error?: string } | null;
+        throw new Error(payload?.error || "Failed to send invite");
+      }
+
       setInviteEmail("");
       setInviteRole("org:member");
       toast.success("Invitation sent");
