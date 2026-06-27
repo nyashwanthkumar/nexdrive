@@ -47,7 +47,7 @@ import {
 import { toast } from "sonner";
 import { useRouter } from "next/navigation";
 import { useTheme } from "../_components/theme-provider";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { getDisplayedFiles, getVisibleFolders } from "./_features/file-feature-filters";
 import { getViewMeta, type DisplayMode, type SortMode, type ViewType } from "./_features/feature-types";
 import { getVisibleTrashFolders } from "./_features/trash";
@@ -198,7 +198,8 @@ export default function DashboardPage() {
   const [isAskAiLoading, setIsAskAiLoading] = useState(false);
   const [isEmptyTrashDialogOpen, setIsEmptyTrashDialogOpen] = useState(false);
   const [isEmptyingTrash, setIsEmptyingTrash] = useState(false);
-  const [isActivatingInviteWorkspace, setIsActivatingInviteWorkspace] = useState(false);
+  const [isResolvingInviteWorkspace, setIsResolvingInviteWorkspace] = useState(false);
+  const inviteWorkspaceCheckKeyRef = useRef<string | null>(null);
 
   const orgId = organization?.id ?? activeOrgId ?? user?.id;
 
@@ -240,35 +241,63 @@ export default function DashboardPage() {
       !isSignedIn ||
       !isOrganizationListLoaded ||
       !setActive ||
-      isActivatingInviteWorkspace
+      isResolvingInviteWorkspace
     ) {
       return;
     }
 
     const params = new URLSearchParams(window.location.search);
     const invitedOrgId = params.get("join_org");
-    if (!invitedOrgId) return;
+    const inviteCheckKey = `${user?.id ?? "unknown"}:${invitedOrgId ?? "single-pending"}`;
+    if (inviteWorkspaceCheckKeyRef.current === inviteCheckKey) return;
+    inviteWorkspaceCheckKeyRef.current = inviteCheckKey;
 
     const currentOrgId = organization?.id ?? activeOrgId ?? null;
-    if (currentOrgId === invitedOrgId) {
+    if (invitedOrgId && currentOrgId === invitedOrgId) {
       window.history.replaceState(null, "", "/dashboard");
       return;
     }
 
-    const invitedMembership = (userMemberships.data ?? []).find(
-      (membership) => membership.organization.id === invitedOrgId
-    );
-    if (!invitedMembership) return;
-
     const activateOrganization = setActive;
-    const invitedOrganizationName = invitedMembership.organization.name;
     let cancelled = false;
 
-    async function activateInviteWorkspace() {
+    async function resolveInviteWorkspace() {
       try {
-        setIsActivatingInviteWorkspace(true);
+        setIsResolvingInviteWorkspace(true);
+        const memberships = userMemberships.data ?? [];
+        const invitedMembership = invitedOrgId
+          ? memberships.find((membership) => membership.organization.id === invitedOrgId)
+          : undefined;
+
+        if (invitedMembership) {
+          await activateOrganization({
+            organization: invitedMembership.organization.id,
+            navigate: async ({ decorateUrl }) => {
+              window.location.replace(decorateUrl("/dashboard"));
+            },
+          });
+          return;
+        }
+
+        if (!user) return;
+
+        const invitations = await user.getOrganizationInvitations({ status: "pending" });
+        const pendingInvites = invitations.data ?? [];
+        const pendingInvite = invitedOrgId
+          ? pendingInvites.find((invite) => invite.publicOrganizationData.id === invitedOrgId)
+          : pendingInvites.length === 1
+          ? pendingInvites[0]
+          : undefined;
+
+        if (!pendingInvite) return;
+
+        const nextOrgId = pendingInvite.publicOrganizationData.id;
+        const nextOrgName = pendingInvite.publicOrganizationData.name;
+
+        await pendingInvite.accept();
+        await user.reload();
         await activateOrganization({
-          organization: invitedOrgId,
+          organization: nextOrgId,
           navigate: async ({ decorateUrl }) => {
             window.location.replace(decorateUrl("/dashboard"));
           },
@@ -277,30 +306,33 @@ export default function DashboardPage() {
         if (!cancelled) {
           window.history.replaceState(null, "", "/dashboard");
           router.refresh();
-          toast.success(`Joined ${invitedOrganizationName}`);
+          toast.success(`Joined ${nextOrgName}`);
         }
       } catch (error) {
-        console.error("Failed to activate invited organization", error);
-        if (!cancelled) toast.error("Joined, but workspace switch failed. Open the workspace menu and select the organization.");
+        console.error("Failed to accept invited organization", error);
+        if (!cancelled) toast.error("Invite could not be accepted. Try the invite link again.");
       } finally {
-        if (!cancelled) setIsActivatingInviteWorkspace(false);
+        if (!cancelled) setIsResolvingInviteWorkspace(false);
       }
     }
 
-    void activateInviteWorkspace();
+    if (invitedOrgId || user) {
+      void resolveInviteWorkspace();
+    }
 
     return () => {
       cancelled = true;
     };
   }, [
     activeOrgId,
-    isActivatingInviteWorkspace,
     isLoaded,
     isOrganizationListLoaded,
+    isResolvingInviteWorkspace,
     isSignedIn,
     organization?.id,
     router,
     setActive,
+    user,
     userMemberships.data,
   ]);
 
