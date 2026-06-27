@@ -62,7 +62,7 @@ export function FolderActionsFeature({
             }}
           >
             <Star className={`h-4 w-4 ${isFavorite ? "fill-yellow-400 text-yellow-400" : ""}`} />
-            {isFavorite ? "Remove from starred" : "Add to starred"}
+            {isFavorite ? "Remove from favourites" : "Add to favourites"}
           </button>
           <div className="my-1 h-px bg-zinc-100" />
           <button

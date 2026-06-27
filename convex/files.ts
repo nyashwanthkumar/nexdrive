@@ -12,6 +12,11 @@ function isOrgAdmin(orgRole: unknown) {
   return role === "org:admin" || role === "admin";
 }
 
+function isOrgMember(orgRole: unknown) {
+  const role = getRole(orgRole);
+  return role === "org:member" || role === "member";
+}
+
 function isPersonalWorkspace(orgId: string) {
   return orgId.startsWith("user_");
 }
@@ -25,22 +30,27 @@ function getActiveWorkspaceIds(identity: { subject: string } & Record<string, un
   ].filter((value): value is string => !!value);
 }
 
-function hasOrganizationSession(identity: Record<string, unknown>) {
-  return (
-    typeof identity.orgRole === "string" ||
-    typeof identity.org_role === "string" ||
-    typeof identity.orgSlug === "string" ||
-    typeof identity.org_slug === "string" ||
-    getActiveWorkspaceIds(identity as { subject: string } & Record<string, unknown>).length > 0
-  );
-}
+function canAccessWorkspace(
+  orgId: string,
+  identity: { subject: string } & Record<string, unknown>,
+  actorRole?: string
+) {
+  if (isPersonalWorkspace(orgId)) {
+    return orgId === identity.subject;
+  }
 
-function canAccessWorkspace(orgId: string, identity: { subject: string } & Record<string, unknown>) {
-  return isPersonalWorkspace(orgId)
-    ? orgId === identity.subject
-    : getActiveWorkspaceIds(identity).includes(orgId) ||
-        hasOrganizationSession(identity) ||
-        typeof identity.subject === "string";
+  const activeWorkspaceIds = getActiveWorkspaceIds(identity);
+
+  if (activeWorkspaceIds.length > 0) {
+    return activeWorkspaceIds.includes(orgId);
+  }
+
+  return (
+    isOrgAdminActor(identity, actorRole) ||
+    isOrgMember(identity.orgRole) ||
+    isOrgMember(identity.org_role) ||
+    isOrgMember(actorRole)
+  );
 }
 
 function isOrgAdminActor(identity: Record<string, unknown>, actorRole?: string) {
@@ -119,7 +129,7 @@ export const createFile = mutation({
       throw new Error("you must be logged in");
     }
 
-    if (!canAccessWorkspace(args.orgId, identity)) {
+    if (!canAccessWorkspace(args.orgId, identity, args.actorRole)) {
       throw new Error("You do not have access to this workspace");
     }
 
@@ -183,7 +193,7 @@ export const deleteFile = mutation({
     const owner = isFileOwner(file, identity);
     const admin = isOrgAdminActor(identity, args.actorRole);
 
-    if (!canAccessWorkspace(file.orgId, identity)) {
+    if (!canAccessWorkspace(file.orgId, identity, args.actorRole)) {
       throw new Error("You do not have access to this file");
     }
 
@@ -234,7 +244,7 @@ export const restoreFile = mutation({
     const owner = isFileOwner(file, identity);
     const admin = isOrgAdminActor(identity, args.actorRole);
 
-    if (!canAccessWorkspace(file.orgId, identity)) {
+    if (!canAccessWorkspace(file.orgId, identity, args.actorRole)) {
       throw new Error("You do not have access to this file");
     }
 
@@ -285,7 +295,7 @@ export const permanentlyDeleteFile = mutation({
     const owner = isFileOwner(file, identity);
     const admin = isOrgAdminActor(identity, args.actorRole);
 
-    if (!canAccessWorkspace(file.orgId, identity)) {
+    if (!canAccessWorkspace(file.orgId, identity, args.actorRole)) {
       throw new Error("You do not have access to this file");
     }
 
@@ -322,7 +332,7 @@ export const toggleFavorite = mutation({
       throw new Error("File not found");
     }
 
-    if (!canAccessWorkspace(file.orgId, identity)) {
+    if (!canAccessWorkspace(file.orgId, identity, args.actorRole)) {
       throw new Error("You do not have access to this file");
     }
 
@@ -352,7 +362,7 @@ export const createFolder = mutation({
       throw new Error("you must be logged in");
     }
 
-    if (!canAccessWorkspace(args.orgId, identity)) {
+    if (!canAccessWorkspace(args.orgId, identity, args.actorRole)) {
       throw new Error("You do not have access to this workspace");
     }
 
@@ -387,6 +397,7 @@ export const createFolder = mutation({
 export const getFolders = query({
   args: {
     orgId: v.string(),
+    actorRole: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     const identity = await ctx.auth.getUserIdentity();
@@ -395,7 +406,7 @@ export const getFolders = query({
       return [];
     }
 
-    if (!canAccessWorkspace(args.orgId, identity)) {
+    if (!canAccessWorkspace(args.orgId, identity, args.actorRole)) {
       return [];
     }
 
@@ -431,7 +442,7 @@ export const toggleFavoriteFolder = mutation({
       throw new Error("Folder not found");
     }
 
-    if (!canAccessWorkspace(folder.orgId, identity)) {
+    if (!canAccessWorkspace(folder.orgId, identity, args.actorRole)) {
       throw new Error("You do not have access to this folder");
     }
 
@@ -470,7 +481,7 @@ export const deleteFolder = mutation({
     const owner = isFolderOwner(folder, identity);
     const admin = isOrgAdminActor(identity, args.actorRole);
 
-    if (!canAccessWorkspace(folder.orgId, identity)) {
+    if (!canAccessWorkspace(folder.orgId, identity, args.actorRole)) {
       throw new Error("You do not have access to this folder");
     }
 
@@ -531,7 +542,7 @@ export const restoreFolder = mutation({
     const owner = isFolderOwner(folder, identity);
     const admin = isOrgAdminActor(identity, args.actorRole);
 
-    if (!canAccessWorkspace(folder.orgId, identity)) {
+    if (!canAccessWorkspace(folder.orgId, identity, args.actorRole)) {
       throw new Error("You do not have access to this folder");
     }
 
@@ -581,7 +592,7 @@ export const permanentlyDeleteFolder = mutation({
     const owner = isFolderOwner(folder, identity);
     const admin = isOrgAdminActor(identity, args.actorRole);
 
-    if (!canAccessWorkspace(folder.orgId, identity)) {
+    if (!canAccessWorkspace(folder.orgId, identity, args.actorRole)) {
       throw new Error("You do not have access to this folder");
     }
 
@@ -632,7 +643,7 @@ export const renameFile = mutation({
     const owner = isFileOwner(file, identity);
     const admin = isOrgAdminActor(identity, args.actorRole);
 
-    if (!canAccessWorkspace(file.orgId, identity)) {
+    if (!canAccessWorkspace(file.orgId, identity, args.actorRole)) {
       throw new Error("You do not have access to this file");
     }
 
@@ -693,7 +704,7 @@ export const renameFolder = mutation({
     const owner = isFolderOwner(folder, identity);
     const admin = isOrgAdminActor(identity, args.actorRole);
 
-    if (!canAccessWorkspace(folder.orgId, identity)) {
+    if (!canAccessWorkspace(folder.orgId, identity, args.actorRole)) {
       throw new Error("You do not have access to this folder");
     }
 
@@ -733,7 +744,7 @@ export const createShareLink = mutation({
       throw new Error("File not found");
     }
 
-    if (!canAccessWorkspace(file.orgId, identity)) {
+    if (!canAccessWorkspace(file.orgId, identity, args.actorRole)) {
       throw new Error("You do not have access to this file");
     }
 
@@ -809,11 +820,12 @@ export const getSharedFile = query({
 export const getShareLinks = query({
   args: {
     orgId: v.string(),
+    actorRole: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     const identity = await ctx.auth.getUserIdentity();
 
-    if (!identity || !canAccessWorkspace(args.orgId, identity)) {
+    if (!identity || !canAccessWorkspace(args.orgId, identity, args.actorRole)) {
       return [];
     }
 
@@ -863,7 +875,7 @@ export const revokeShareLink = mutation({
       throw new Error("Share link not found");
     }
 
-    if (!canAccessWorkspace(share.orgId, identity)) {
+    if (!canAccessWorkspace(share.orgId, identity, args.actorRole)) {
       throw new Error("You do not have access to this share link");
     }
 
@@ -895,11 +907,12 @@ export const revokeShareLink = mutation({
 export const getStorageStats = query({
   args: {
     orgId: v.string(),
+    actorRole: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     const identity = await ctx.auth.getUserIdentity();
 
-    if (!identity || !canAccessWorkspace(args.orgId, identity)) {
+    if (!identity || !canAccessWorkspace(args.orgId, identity, args.actorRole)) {
       return null;
     }
 
@@ -926,11 +939,12 @@ export const getStorageStats = query({
 export const getActivityLogs = query({
   args: {
     orgId: v.string(),
+    actorRole: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     const identity = await ctx.auth.getUserIdentity();
 
-    if (!identity || !canAccessWorkspace(args.orgId, identity)) {
+    if (!identity || !canAccessWorkspace(args.orgId, identity, args.actorRole)) {
       return [];
     }
 
@@ -946,6 +960,7 @@ export const getFiles = query({
   args: {
     orgId: v.string(),
     shouldDelete: v.optional(v.boolean()),
+    actorRole: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     const identity = await ctx.auth.getUserIdentity();
@@ -954,7 +969,7 @@ export const getFiles = query({
       return [];
     }
 
-    if (!canAccessWorkspace(args.orgId, identity)) {
+    if (!canAccessWorkspace(args.orgId, identity, args.actorRole)) {
       return [];
     }
 
@@ -990,7 +1005,7 @@ export const getUserRole = query({
       return null;
     }
 
-    return getRole(identity.orgRole);
+    return getRole(identity.orgRole) ?? getRole(identity.org_role);
   },
 });
 

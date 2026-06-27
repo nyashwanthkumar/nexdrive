@@ -60,6 +60,7 @@ import { RenameFileFeature, RenameFolderFeature } from "./_features/rename";
 import { DeleteFolderFeature } from "./_features/delete";
 import { FolderActionsFeature } from "./_features/folder-actions";
 import { SidebarItemFeature } from "./_features/sidebar";
+import { OrganizationWorkspaceFeature } from "./_features/organization-workspace";
 
 type AskAiChatMessage = {
   id: string;
@@ -189,35 +190,35 @@ export default function DashboardPage() {
   const [askAiMessages, setAskAiMessages] = useState<AskAiChatMessage[]>([]);
   const [isAskAiLoading, setIsAskAiLoading] = useState(false);
 
-  const orgId = activeOrgId ?? organization?.id ?? user?.id;
+  const orgId = organization?.id ?? activeOrgId ?? user?.id;
 
   const activeFiles = useQuery(
     api.files.getFiles,
-    orgId ? { orgId, shouldDelete: false } : "skip"
+    orgId ? { orgId, shouldDelete: false, actorRole: orgRole ?? undefined } : "skip"
   );
 
   const trashFiles = useQuery(
     api.files.getFiles,
-    orgId ? { orgId, shouldDelete: true } : "skip"
+    orgId ? { orgId, shouldDelete: true, actorRole: orgRole ?? undefined } : "skip"
   );
 
   const folders = useQuery(
     api.files.getFolders,
-    orgId ? { orgId } : "skip"
+    orgId ? { orgId, actorRole: orgRole ?? undefined } : "skip"
   );
 
   const userRole = useQuery(api.files.getUserRole, orgId ? {} : "skip");
   const activityLogs = useQuery(
     api.files.getActivityLogs,
-    orgId ? { orgId } : "skip"
+    orgId ? { orgId, actorRole: orgRole ?? undefined } : "skip"
   );
   const storageStats = useQuery(
     api.files.getStorageStats,
-    orgId ? { orgId } : "skip"
+    orgId ? { orgId, actorRole: orgRole ?? undefined } : "skip"
   );
   const shareLinks = useQuery(
     api.files.getShareLinks,
-    orgId ? { orgId } : "skip"
+    orgId ? { orgId, actorRole: orgRole ?? undefined } : "skip"
   );
   useEffect(() => {
     if (isLoaded && !isSignedIn) router.push("/");
@@ -687,9 +688,9 @@ export default function DashboardPage() {
     try {
       setFolderMenuId(null);
       await toggleFavoriteFolder({ folderId, actorRole: workspaceRole ?? undefined });
-      toast.success(isFavorite ? "Removed from starred" : "Added to starred");
+      toast.success(isFavorite ? "Removed from favourites" : "Added to favourites");
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Failed to update starred folder");
+      toast.error(error instanceof Error ? error.message : "Failed to update favourite folder");
     }
   }
 
@@ -821,7 +822,12 @@ export default function DashboardPage() {
               >
                 {isMobileNavOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
               </button>
-              <UploadButton folders={folders ?? []} disabled={!canManageCurrentWorkspace} />
+              <UploadButton
+                folders={folders ?? []}
+                disabled={!canManageCurrentWorkspace || !orgId}
+                orgId={orgId}
+                actorRole={workspaceRole ?? undefined}
+              />
             </UploadFeature>
 
             <nav
@@ -881,7 +887,7 @@ export default function DashboardPage() {
               <SidebarItemFeature
                 active={activeView === "starred"}
                 icon={<Star className="h-4 w-4" />}
-                label="Starred"
+                label="Favourites"
                 onClick={() => {
                   setActiveView("starred");
                   setCurrentFolderId(null);
@@ -1034,6 +1040,13 @@ export default function DashboardPage() {
                     </span>
                   )}
                 </Button>
+                <OrganizationWorkspaceFeature
+                  workspaceName={workspaceTitle}
+                  isOrganization={!!organization}
+                  canManage={canManageCurrentWorkspace}
+                  fileCount={storageStats?.fileCount ?? 0}
+                  activeShares={activeShares.length}
+                />
                 {selectableFiles.length + selectableFolders.length > 0 && (
                   isSelectionMode ? (
                     <div className="flex items-center gap-1.5 rounded-full border border-zinc-200/80 bg-zinc-50/95 px-1.5 py-1 shadow-inner shadow-white/70 dark:border-zinc-800 dark:bg-zinc-950/90 dark:shadow-none">
@@ -1152,7 +1165,7 @@ export default function DashboardPage() {
                       : activeView === "activity"
                       ? "No activity yet"
                       : activeView === "starred"
-                      ? "No starred files yet"
+                      ? "No favourites yet"
                       : activeView === "folders"
                       ? currentFolderId
                         ? "This folder is empty"
@@ -1175,7 +1188,7 @@ export default function DashboardPage() {
                       : activeView === "activity"
                       ? "Upload, rename, share, or delete a file to see updates here"
                       : activeView === "starred"
-                      ? "Star a file to add it here"
+                      ? "Mark a file as favourite to add it here"
                       : activeView === "folders"
                       ? currentFolderId
                         ? "Use Upload to choose this folder as the destination"
@@ -1466,7 +1479,7 @@ export default function DashboardPage() {
                             variant="ghost"
                             size="sm"
                             className="h-8 rounded-xl px-2.5 text-zinc-400 hover:bg-white hover:text-zinc-700 dark:hover:bg-zinc-900"
-                            disabled={!file.url || !canManageFile(file)}
+                            disabled={!file.url}
                           >
                             <a href={file.url ?? "#"} download={file.name} target="_blank" rel="noreferrer" title="Download">
                               <Download className="h-3.5 w-3.5" />
@@ -1476,7 +1489,7 @@ export default function DashboardPage() {
                             variant="ghost"
                             size="sm"
                             className="h-8 rounded-xl px-2.5 text-zinc-500 hover:bg-white hover:text-zinc-900 dark:hover:bg-zinc-900 dark:hover:text-zinc-100"
-                            disabled={!file.url || !canManageFile(file)}
+                            disabled={!file.url || !canManageCurrentWorkspace}
                             onClick={(event) => {
                               event.stopPropagation();
                               setSharingFile(file);
@@ -1610,8 +1623,10 @@ export default function DashboardPage() {
                       {activeView !== "trash" && (
                         <button
                           type="button"
+                          disabled={!canManageFile(file)}
                           onClick={async (e) => {
                             e.stopPropagation();
+                            if (!canManageFile(file)) return;
                             try {
                               await toggleFavorite({ fileId: file._id, actorRole: workspaceRole ?? undefined });
                               toast.success(
@@ -1621,7 +1636,7 @@ export default function DashboardPage() {
                               toast.error("Failed to update favourite");
                             }
                           }}
-                          className="absolute right-2 top-2 flex h-7 w-7 items-center justify-center rounded-full border border-zinc-200 bg-white shadow-sm opacity-0 transition-opacity group-hover:opacity-100"
+                          className="absolute right-2 top-2 flex h-7 w-7 items-center justify-center rounded-full border border-zinc-200 bg-white shadow-sm opacity-0 transition-opacity group-hover:opacity-100 disabled:cursor-not-allowed disabled:opacity-40"
                         >
                           <Star
                             className={`h-3.5 w-3.5 ${
@@ -1660,7 +1675,7 @@ export default function DashboardPage() {
                               variant="ghost"
                               size="sm"
                               className="h-8 rounded-xl px-2.5 text-zinc-500 hover:bg-white hover:text-zinc-900 dark:hover:bg-zinc-900 dark:hover:text-zinc-100"
-                              disabled={!file.url}
+                              disabled={!file.url || !canManageCurrentWorkspace}
                               onClick={(event) => {
                                 event.stopPropagation();
                                 setSharingFile(file);

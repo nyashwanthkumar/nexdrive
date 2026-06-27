@@ -1,7 +1,6 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { useAuth, useOrganization, useUser } from "@clerk/nextjs";
 import { useMutation } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
@@ -62,21 +61,20 @@ function getFileType(file: File): FileType {
 export function UploadButton({
   folders = [],
   disabled = false,
+  orgId,
+  actorRole,
 }: {
   folders?: FolderOption[];
   disabled?: boolean;
+  orgId?: string;
+  actorRole?: string;
 }) {
-  const { orgId: activeOrgId, orgRole } = useAuth();
-  const { organization } = useOrganization();
-  const { user } = useUser();
   const createFile = useMutation(api.files.createFile);
   const generateUploadUrl = useMutation(api.files.generateUploadUrl);
   const [isFileDialogOpen, setIsFileDialogOpen] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
   const [uploadStatus, setUploadStatus] = useState("");
   const inputRef = useRef<HTMLInputElement | null>(null);
-
-  const orgId = activeOrgId ?? organization?.id ?? user?.id;
 
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
@@ -150,7 +148,7 @@ export function UploadButton({
         orgId,
         fileId: storageId,
         size: selectedFile.size,
-        actorRole: orgRole ?? undefined,
+        actorRole,
         folderId:
           values.folderId === "root"
             ? undefined
