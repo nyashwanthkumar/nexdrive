@@ -189,6 +189,8 @@ export default function DashboardPage() {
   const [askAiQuestion, setAskAiQuestion] = useState("");
   const [askAiMessages, setAskAiMessages] = useState<AskAiChatMessage[]>([]);
   const [isAskAiLoading, setIsAskAiLoading] = useState(false);
+  const [isEmptyTrashDialogOpen, setIsEmptyTrashDialogOpen] = useState(false);
+  const [isEmptyingTrash, setIsEmptyingTrash] = useState(false);
 
   const orgId = organization?.id ?? activeOrgId ?? user?.id;
 
@@ -334,6 +336,14 @@ export default function DashboardPage() {
   const selectedItemCount = selectedFiles.length + selectedFolders.length;
   const toolbarItemCount = displayedFiles.length + visibleFolders.length;
   const selectableItemCount = selectableFiles.length + selectableFolders.length;
+  const trashedFolders = (folders ?? []).filter((folder) => folder.shouldDelete ?? false);
+  const emptyTrashFiles = (trashFiles ?? []).filter((file) => canManageFile(file));
+  const emptyTrashFolders = trashedFolders.filter((folder) => canManageFolder(folder));
+  const emptyTrashItemCount = emptyTrashFiles.length + emptyTrashFolders.length;
+  const emptyTrashSummary = [
+    emptyTrashFiles.length > 0 ? (emptyTrashFiles.length === 1 ? "1 file" : `${emptyTrashFiles.length} files`) : "",
+    emptyTrashFolders.length > 0 ? (emptyTrashFolders.length === 1 ? "1 folder" : `${emptyTrashFolders.length} folders`) : "",
+  ].filter(Boolean).join(" and ");
   const allVisibleSelected =
     selectableItemCount > 0 &&
     selectableFiles.every((file) => selectedFileIds.includes(file._id)) &&
@@ -791,6 +801,30 @@ export default function DashboardPage() {
     }
   }
 
+  async function emptyTrash() {
+    if (emptyTrashItemCount === 0) return;
+
+    try {
+      setIsEmptyingTrash(true);
+
+      for (const folder of emptyTrashFolders) {
+        await permanentlyDeleteFolder({ folderId: folder._id, actorRole: workspaceRole ?? undefined });
+      }
+
+      for (const file of emptyTrashFiles) {
+        await permanentlyDeleteFile({ fileId: file._id, actorRole: workspaceRole ?? undefined });
+      }
+
+      toast.success(emptyTrashItemCount === 1 ? "Item permanently deleted" : "Trash cleared");
+      clearSelection();
+      setIsEmptyTrashDialogOpen(false);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Failed to clear trash");
+    } finally {
+      setIsEmptyingTrash(false);
+    }
+  }
+
   const isDarkTheme = resolvedTheme === "dark";
 
   function canManageFile(file: FileItem) {
@@ -1047,6 +1081,18 @@ export default function DashboardPage() {
                   fileCount={storageStats?.fileCount ?? 0}
                   activeShares={activeShares.length}
                 />
+                {activeView === "trash" && emptyTrashItemCount > 0 && (
+                  <Button
+                    variant="destructive"
+                    size="sm"
+                    className="h-9 rounded-xl px-3"
+                    disabled={isEmptyingTrash}
+                    onClick={() => setIsEmptyTrashDialogOpen(true)}
+                  >
+                    <Trash2 className="mr-1.5 h-3.5 w-3.5" />
+                    Delete all
+                  </Button>
+                )}
                 {selectableFiles.length + selectableFolders.length > 0 && (
                   isSelectionMode ? (
                     <div className="flex items-center gap-1.5 rounded-full border border-zinc-200/80 bg-zinc-50/95 px-1.5 py-1 shadow-inner shadow-white/70 dark:border-zinc-800 dark:bg-zinc-950/90 dark:shadow-none">
@@ -2181,6 +2227,50 @@ export default function DashboardPage() {
               </Button>
             </div>
           </form>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={isEmptyTrashDialogOpen}
+        onOpenChange={(isOpen) => {
+          if (!isEmptyingTrash) setIsEmptyTrashDialogOpen(isOpen);
+        }}
+      >
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Delete everything in trash?</DialogTitle>
+            <DialogDescription>
+              This will permanently delete {emptyTrashSummary} from {workspaceTitle}. This action cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="rounded-xl border border-red-100 bg-red-50 px-3 py-2 text-sm text-red-700 dark:border-red-950/70 dark:bg-red-950/30 dark:text-red-200">
+            Files and folders deleted here will be removed for everyone with access to this workspace.
+          </div>
+          <div className="flex justify-end gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              disabled={isEmptyingTrash}
+              onClick={() => setIsEmptyTrashDialogOpen(false)}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              variant="destructive"
+              disabled={isEmptyingTrash || emptyTrashItemCount === 0}
+              onClick={emptyTrash}
+            >
+              {isEmptyingTrash ? (
+                <>
+                  <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+                  Deleting...
+                </>
+              ) : (
+                "Delete all"
+              )}
+            </Button>
+          </div>
         </DialogContent>
       </Dialog>
 
