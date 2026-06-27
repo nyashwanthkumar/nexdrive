@@ -36,7 +36,7 @@ export async function POST(request: Request) {
     emailAddress,
     role,
     inviterUserId: userId,
-    redirectUrl: `${origin}/dashboard`,
+    redirectUrl: `${origin}/dashboard?join_org=${encodeURIComponent(orgId)}`,
   });
 
   return Response.json({ ok: true });

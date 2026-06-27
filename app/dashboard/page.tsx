@@ -1,6 +1,6 @@
 "use client";
 
-import { useOrganization, useUser, useAuth } from "@clerk/nextjs";
+import { useOrganization, useOrganizationList, useUser, useAuth } from "@clerk/nextjs";
 import { useMutation, useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { UploadButton } from "./_components/upload-button";
@@ -133,6 +133,13 @@ export default function DashboardPage() {
   const router = useRouter();
   const { resolvedTheme, setTheme } = useTheme();
   const { organization } = useOrganization();
+  const {
+    isLoaded: isOrganizationListLoaded,
+    setActive,
+    userMemberships,
+  } = useOrganizationList({
+    userMemberships: true,
+  });
   const { user } = useUser();
 
   const deleteFile = useMutation(api.files.deleteFile);
@@ -191,6 +198,7 @@ export default function DashboardPage() {
   const [isAskAiLoading, setIsAskAiLoading] = useState(false);
   const [isEmptyTrashDialogOpen, setIsEmptyTrashDialogOpen] = useState(false);
   const [isEmptyingTrash, setIsEmptyingTrash] = useState(false);
+  const [isActivatingInviteWorkspace, setIsActivatingInviteWorkspace] = useState(false);
 
   const orgId = organization?.id ?? activeOrgId ?? user?.id;
 
@@ -225,6 +233,76 @@ export default function DashboardPage() {
   useEffect(() => {
     if (isLoaded && !isSignedIn) router.push("/");
   }, [isLoaded, isSignedIn, router]);
+
+  useEffect(() => {
+    if (
+      !isLoaded ||
+      !isSignedIn ||
+      !isOrganizationListLoaded ||
+      !setActive ||
+      isActivatingInviteWorkspace
+    ) {
+      return;
+    }
+
+    const params = new URLSearchParams(window.location.search);
+    const invitedOrgId = params.get("join_org");
+    if (!invitedOrgId) return;
+
+    const currentOrgId = organization?.id ?? activeOrgId ?? null;
+    if (currentOrgId === invitedOrgId) {
+      window.history.replaceState(null, "", "/dashboard");
+      return;
+    }
+
+    const invitedMembership = (userMemberships.data ?? []).find(
+      (membership) => membership.organization.id === invitedOrgId
+    );
+    if (!invitedMembership) return;
+
+    const activateOrganization = setActive;
+    const invitedOrganizationName = invitedMembership.organization.name;
+    let cancelled = false;
+
+    async function activateInviteWorkspace() {
+      try {
+        setIsActivatingInviteWorkspace(true);
+        await activateOrganization({
+          organization: invitedOrgId,
+          navigate: async ({ decorateUrl }) => {
+            window.location.replace(decorateUrl("/dashboard"));
+          },
+        });
+
+        if (!cancelled) {
+          window.history.replaceState(null, "", "/dashboard");
+          router.refresh();
+          toast.success(`Joined ${invitedOrganizationName}`);
+        }
+      } catch (error) {
+        console.error("Failed to activate invited organization", error);
+        if (!cancelled) toast.error("Joined, but workspace switch failed. Open the workspace menu and select the organization.");
+      } finally {
+        if (!cancelled) setIsActivatingInviteWorkspace(false);
+      }
+    }
+
+    void activateInviteWorkspace();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    activeOrgId,
+    isActivatingInviteWorkspace,
+    isLoaded,
+    isOrganizationListLoaded,
+    isSignedIn,
+    organization?.id,
+    router,
+    setActive,
+    userMemberships.data,
+  ]);
 
   useEffect(() => {
     if (!user) return;
