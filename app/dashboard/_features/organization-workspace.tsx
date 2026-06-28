@@ -27,7 +27,7 @@ type TeamMembership = {
   id: string;
   role: string;
   roleName?: string;
-  createdAt?: Date;
+  createdAt?: number | string;
   publicUserData?: {
     firstName: string | null;
     lastName: string | null;
@@ -44,8 +44,7 @@ type TeamInvitation = {
   role: string;
   roleName?: string;
   status: string;
-  createdAt?: Date;
-  revoke: () => Promise<TeamInvitation>;
+  createdAt?: number | string;
 };
 
 type OrganizationWorkspaceResource = {
@@ -95,7 +94,7 @@ function memberInitial(member: TeamMembership) {
   return memberName(member).trim().charAt(0).toUpperCase() || "N";
 }
 
-function formatJoinDate(value?: Date) {
+function formatJoinDate(value?: Date | number | string) {
   if (!value) return "Recently joined";
   return `Joined ${new Date(value).toLocaleDateString(undefined, {
     month: "short",
@@ -116,6 +115,8 @@ export function OrganizationWorkspaceFeature({
   const [isOpen, setIsOpen] = useState(false);
   const [members, setMembers] = useState<TeamMembership[]>([]);
   const [invitations, setInvitations] = useState<TeamInvitation[]>([]);
+  const [joinedCount, setJoinedCount] = useState(0);
+  const [pendingCount, setPendingCount] = useState(0);
   const [isLoadingTeam, setIsLoadingTeam] = useState(false);
   const [inviteEmail, setInviteEmail] = useState("");
   const [inviteRole, setInviteRole] = useState<WorkspaceRole>("org:member");
@@ -123,33 +124,43 @@ export function OrganizationWorkspaceFeature({
   const [workingMemberId, setWorkingMemberId] = useState<string | null>(null);
   const [workingInviteId, setWorkingInviteId] = useState<string | null>(null);
 
-  const joinedCount = isOrganization
-    ? Math.max(team?.membersCount ?? 0, members.length)
-    : 1;
-  const pendingCount = isOrganization
-    ? Math.max(team?.pendingInvitationsCount ?? 0, invitations.length)
-    : 0;
   const loadTeam = useCallback(async () => {
-    if (!team || !isOrganization) {
+    if (!isOrganization) {
       setMembers([]);
       setInvitations([]);
+      setJoinedCount(0);
+      setPendingCount(0);
       return;
     }
 
     try {
       setIsLoadingTeam(true);
-      const [membersResponse, invitationsResponse] = await Promise.all([
-        team.getMemberships({ pageSize: 50 }),
-        team.getInvitations({ pageSize: 25, status: ["pending"] }),
-      ]);
-      setMembers(membersResponse.data);
-      setInvitations(invitationsResponse.data);
+      const response = await fetch("/api/organization/team", {
+        method: "GET",
+      });
+
+      if (!response.ok) {
+        const payload = (await response.json().catch(() => null)) as { error?: string } | null;
+        throw new Error(payload?.error || "Could not load team");
+      }
+
+      const payload = (await response.json()) as {
+        joinedCount?: number;
+        pendingCount?: number;
+        members?: TeamMembership[];
+        invitations?: TeamInvitation[];
+      };
+
+      setMembers(payload.members ?? []);
+      setInvitations(canManage ? payload.invitations ?? [] : []);
+      setJoinedCount(payload.joinedCount ?? payload.members?.length ?? 0);
+      setPendingCount(canManage ? payload.pendingCount ?? payload.invitations?.length ?? 0 : 0);
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Could not load team");
     } finally {
       setIsLoadingTeam(false);
     }
-  }, [isOrganization, team]);
+  }, [canManage, isOrganization]);
 
   useEffect(() => {
     if (isOpen) void loadTeam();
@@ -228,7 +239,15 @@ export function OrganizationWorkspaceFeature({
 
     try {
       setWorkingInviteId(invitation.id);
-      await invitation.revoke();
+      const response = await fetch(`/api/organization/invitations/${invitation.id}`, {
+        method: "DELETE",
+      });
+
+      if (!response.ok) {
+        const payload = (await response.json().catch(() => null)) as { error?: string } | null;
+        throw new Error(payload?.error || "Failed to revoke invitation");
+      }
+
       toast.success("Invitation revoked");
       await loadTeam();
     } catch (error) {
@@ -236,6 +255,10 @@ export function OrganizationWorkspaceFeature({
     } finally {
       setWorkingInviteId(null);
     }
+  }
+
+  if (!isOrganization) {
+    return null;
   }
 
   return (
