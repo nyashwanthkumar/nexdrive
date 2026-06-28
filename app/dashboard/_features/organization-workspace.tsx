@@ -293,7 +293,7 @@ export function OrganizationWorkspaceFeature({
           <div className="bg-zinc-50/70 px-5 py-5 dark:bg-zinc-950/40 sm:px-6">
             <div className="mb-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
               <WorkspaceStat label="Joined users" value={joinedCount.toString()} />
-              <WorkspaceStat label="Pending invites" value={pendingCount.toString()} />
+              {canManage ? <WorkspaceStat label="Pending invites" value={pendingCount.toString()} /> : null}
               <WorkspaceStat label="Files" value={fileCount.toString()} />
               <WorkspaceStat label="Shares" value={activeShares.toString()} />
             </div>
@@ -304,7 +304,9 @@ export function OrganizationWorkspaceFeature({
                   <div>
                     <h2 className="text-sm font-semibold text-zinc-950 dark:text-zinc-50">Members</h2>
                     <p className="mt-1 text-xs text-zinc-500 dark:text-zinc-400">
-                      Admins manage files, folders, shares, trash, invitations, and roles.
+                      {canManage
+                        ? "Admins manage files, folders, shares, trash, invitations, and roles."
+                        : "View everyone who has access to this workspace."}
                     </p>
                   </div>
                   {isLoadingTeam && <Loader2 className="h-4 w-4 animate-spin text-zinc-400" />}
@@ -391,59 +393,59 @@ export function OrganizationWorkspaceFeature({
                 </div>
               </section>
 
-              <aside className="space-y-4">
-                <section className="rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm shadow-zinc-200/40 dark:border-zinc-800 dark:bg-zinc-900 dark:shadow-none">
-                  <h2 className="text-sm font-semibold text-zinc-950 dark:text-zinc-50">Invite</h2>
-                  <p className="mt-1 text-xs text-zinc-500 dark:text-zinc-400">
-                    {canManage ? "Send a Clerk invitation with the right role." : "Only admins can invite people."}
-                  </p>
+              {canManage ? (
+                <aside className="space-y-4">
+                  <section className="rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm shadow-zinc-200/40 dark:border-zinc-800 dark:bg-zinc-900 dark:shadow-none">
+                    <h2 className="text-sm font-semibold text-zinc-950 dark:text-zinc-50">Invite</h2>
+                    <p className="mt-1 text-xs text-zinc-500 dark:text-zinc-400">
+                      Send a Clerk invitation with the right role.
+                    </p>
 
-                  <form onSubmit={sendInvite} className="mt-4 space-y-3">
-                    <Input
-                      type="email"
-                      value={inviteEmail}
-                      onChange={(event) => setInviteEmail(event.target.value)}
-                      placeholder="teammate@example.com"
-                      disabled={!canManage || !isOrganization || isSendingInvite}
-                    />
-                    <select
-                      value={inviteRole}
-                      onChange={(event) => setInviteRole(event.target.value as WorkspaceRole)}
-                      disabled={!canManage || !isOrganization || isSendingInvite}
-                      className="h-10 w-full rounded-xl border border-zinc-200 bg-white px-3 text-sm text-zinc-800 outline-none focus:border-zinc-400 focus:ring-2 focus:ring-zinc-100 disabled:cursor-not-allowed disabled:opacity-60 dark:border-zinc-800 dark:bg-zinc-950 dark:text-zinc-100 dark:focus:border-zinc-600 dark:focus:ring-zinc-800"
-                    >
-                      <option value="org:member">Member</option>
-                      <option value="org:admin">Admin</option>
-                    </select>
-                    <Button
-                      type="submit"
-                      className="w-full rounded-xl"
-                      disabled={!canManage || !isOrganization || isSendingInvite || !inviteEmail.trim()}
-                    >
-                      {isSendingInvite ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <UserPlus className="mr-1.5 h-3.5 w-3.5" />}
-                      Send invite
-                    </Button>
-                  </form>
-                </section>
+                    <form onSubmit={sendInvite} className="mt-4 space-y-3">
+                      <Input
+                        type="email"
+                        value={inviteEmail}
+                        onChange={(event) => setInviteEmail(event.target.value)}
+                        placeholder="teammate@example.com"
+                        disabled={!isOrganization || isSendingInvite}
+                      />
+                      <select
+                        value={inviteRole}
+                        onChange={(event) => setInviteRole(event.target.value as WorkspaceRole)}
+                        disabled={!isOrganization || isSendingInvite}
+                        className="h-10 w-full rounded-xl border border-zinc-200 bg-white px-3 text-sm text-zinc-800 outline-none focus:border-zinc-400 focus:ring-2 focus:ring-zinc-100 disabled:cursor-not-allowed disabled:opacity-60 dark:border-zinc-800 dark:bg-zinc-950 dark:text-zinc-100 dark:focus:border-zinc-600 dark:focus:ring-zinc-800"
+                      >
+                        <option value="org:member">Member</option>
+                        <option value="org:admin">Admin</option>
+                      </select>
+                      <Button
+                        type="submit"
+                        className="w-full rounded-xl"
+                        disabled={!isOrganization || isSendingInvite || !inviteEmail.trim()}
+                      >
+                        {isSendingInvite ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <UserPlus className="mr-1.5 h-3.5 w-3.5" />}
+                        Send invite
+                      </Button>
+                    </form>
+                  </section>
 
-                <section className="rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm shadow-zinc-200/40 dark:border-zinc-800 dark:bg-zinc-900 dark:shadow-none">
-                  <h2 className="text-sm font-semibold text-zinc-950 dark:text-zinc-50">Pending</h2>
-                  <div className="mt-3 space-y-2">
-                    {invitations.length > 0 ? (
-                      invitations.map((invitation) => (
-                        <div
-                          key={invitation.id}
-                          className="flex items-center justify-between gap-2 rounded-xl bg-zinc-50 px-3 py-2 dark:bg-zinc-950"
-                        >
-                          <div className="min-w-0">
-                            <p className="truncate text-xs font-semibold text-zinc-800 dark:text-zinc-100">
-                              {invitation.emailAddress}
-                            </p>
-                            <p className="mt-0.5 text-[11px] text-zinc-500 dark:text-zinc-400">
-                              {invitation.roleName || roleTitle(invitation.role)}
-                            </p>
-                          </div>
-                          {canManage && (
+                  <section className="rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm shadow-zinc-200/40 dark:border-zinc-800 dark:bg-zinc-900 dark:shadow-none">
+                    <h2 className="text-sm font-semibold text-zinc-950 dark:text-zinc-50">Pending</h2>
+                    <div className="mt-3 space-y-2">
+                      {invitations.length > 0 ? (
+                        invitations.map((invitation) => (
+                          <div
+                            key={invitation.id}
+                            className="flex items-center justify-between gap-2 rounded-xl bg-zinc-50 px-3 py-2 dark:bg-zinc-950"
+                          >
+                            <div className="min-w-0">
+                              <p className="truncate text-xs font-semibold text-zinc-800 dark:text-zinc-100">
+                                {invitation.emailAddress}
+                              </p>
+                              <p className="mt-0.5 text-[11px] text-zinc-500 dark:text-zinc-400">
+                                {invitation.roleName || roleTitle(invitation.role)}
+                              </p>
+                            </div>
                             <Button
                               type="button"
                               variant="ghost"
@@ -454,17 +456,26 @@ export function OrganizationWorkspaceFeature({
                             >
                               <Mail className="h-3.5 w-3.5" />
                             </Button>
-                          )}
+                          </div>
+                        ))
+                      ) : (
+                        <div className="rounded-xl border border-dashed border-zinc-200 px-3 py-4 text-xs text-zinc-500 dark:border-zinc-800 dark:text-zinc-400">
+                          No pending invitations.
                         </div>
-                      ))
-                    ) : (
-                      <div className="rounded-xl border border-dashed border-zinc-200 px-3 py-4 text-xs text-zinc-500 dark:border-zinc-800 dark:text-zinc-400">
-                        No pending invitations.
-                      </div>
-                    )}
-                  </div>
-                </section>
-              </aside>
+                      )}
+                    </div>
+                  </section>
+                </aside>
+              ) : (
+                <aside>
+                  <section className="rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm shadow-zinc-200/40 dark:border-zinc-800 dark:bg-zinc-900 dark:shadow-none">
+                    <h2 className="text-sm font-semibold text-zinc-950 dark:text-zinc-50">Viewing access</h2>
+                    <p className="mt-1 text-xs leading-5 text-zinc-500 dark:text-zinc-400">
+                      Members can see who belongs to this workspace. Invites, removals, and role changes are handled by admins.
+                    </p>
+                  </section>
+                </aside>
+              )}
             </div>
           </div>
         </DialogContent>

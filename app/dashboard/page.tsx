@@ -201,7 +201,8 @@ export default function DashboardPage() {
   const [isResolvingInviteWorkspace, setIsResolvingInviteWorkspace] = useState(false);
   const inviteWorkspaceCheckKeyRef = useRef<string | null>(null);
 
-  const orgId = organization?.id ?? activeOrgId ?? user?.id;
+  const isOrganizationWorkspace = !!activeOrgId;
+  const orgId = activeOrgId ?? user?.id;
 
   const activeFiles = useQuery(
     api.files.getFiles,
@@ -382,7 +383,7 @@ export default function DashboardPage() {
 
   const isLoading = activeFiles === undefined || trashFiles === undefined || folders === undefined;
   const currentFolder = folders?.find((folder) => folder._id === currentFolderId);
-  const workspaceTitle = organization ? organization.name : "Personal";
+  const workspaceTitle = isOrganizationWorkspace ? organization?.name ?? "Organization" : "Personal";
 
   const displayedFiles = useMemo(
     () =>
@@ -434,7 +435,7 @@ export default function DashboardPage() {
 
   const workspaceRole = orgRole ?? userRole ?? null;
   const isWorkspaceAdmin = workspaceRole === "org:admin" || workspaceRole === "admin";
-  const canManageCurrentWorkspace = !organization || isWorkspaceAdmin;
+  const canManageCurrentWorkspace = !isOrganizationWorkspace || isWorkspaceAdmin;
   const selectedFiles = displayedFiles.filter((file) => selectedFileIds.includes(file._id));
   const selectedFolders = visibleFolders.filter((folder) => selectedFolderIds.includes(folder._id));
   const activeShares = (shareLinks ?? []).filter((share) => !share.isExpired && !share.isRevoked);
@@ -940,13 +941,13 @@ export default function DashboardPage() {
   function canManageFile(file: FileItem) {
     if (!user?.id) return false;
     const owner = (file.userId ?? "") === user.id || file.orgId === user.id;
-    return organization ? isWorkspaceAdmin : owner;
+    return isOrganizationWorkspace ? isWorkspaceAdmin : owner;
   }
 
   function canManageFolder(folder: { orgId: string; userId?: string }) {
     if (!user?.id) return false;
     const owner = (folder.userId ?? "") === user.id || folder.orgId === user.id;
-    return organization ? isWorkspaceAdmin : owner;
+    return isOrganizationWorkspace ? isWorkspaceAdmin : owner;
   }
 
   return (
@@ -1186,7 +1187,7 @@ export default function DashboardPage() {
                 </Button>
                 <OrganizationWorkspaceFeature
                   workspaceName={workspaceTitle}
-                  isOrganization={!!organization}
+                  isOrganization={isOrganizationWorkspace}
                   canManage={canManageCurrentWorkspace}
                   fileCount={storageStats?.fileCount ?? 0}
                   activeShares={activeShares.length}
