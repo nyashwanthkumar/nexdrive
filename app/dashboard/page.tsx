@@ -1,6 +1,6 @@
 "use client";
 
-import { useOrganization, useOrganizationList, useUser, useAuth } from "@clerk/nextjs";
+import { useOrganization, useUser, useAuth } from "@clerk/nextjs";
 import { useMutation, useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { UploadButton } from "./_components/upload-button";
@@ -47,7 +47,7 @@ import {
 import { toast } from "sonner";
 import { useRouter } from "next/navigation";
 import { useTheme } from "../_components/theme-provider";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { getDisplayedFiles, getVisibleFolders } from "./_features/file-feature-filters";
 import { getViewMeta, type DisplayMode, type SortMode, type ViewType } from "./_features/feature-types";
 import { getVisibleTrashFolders } from "./_features/trash";
@@ -60,7 +60,7 @@ import { RenameFileFeature, RenameFolderFeature } from "./_features/rename";
 import { DeleteFolderFeature } from "./_features/delete";
 import { FolderActionsFeature } from "./_features/folder-actions";
 import { SidebarItemFeature } from "./_features/sidebar";
-import { OrganizationWorkspaceFeature } from "./_features/organization-workspace";
+import { OrganizationWorkspaceFeature, useOrganizationInviteHandoff } from "./_features/organization-workspace";
 
 type AskAiChatMessage = {
   id: string;
@@ -133,13 +133,6 @@ export default function DashboardPage() {
   const router = useRouter();
   const { resolvedTheme, setTheme } = useTheme();
   const { organization } = useOrganization();
-  const {
-    isLoaded: isOrganizationListLoaded,
-    setActive,
-    userMemberships,
-  } = useOrganizationList({
-    userMemberships: true,
-  });
   const { user } = useUser();
 
   const deleteFile = useMutation(api.files.deleteFile);
@@ -198,8 +191,7 @@ export default function DashboardPage() {
   const [isAskAiLoading, setIsAskAiLoading] = useState(false);
   const [isEmptyTrashDialogOpen, setIsEmptyTrashDialogOpen] = useState(false);
   const [isEmptyingTrash, setIsEmptyingTrash] = useState(false);
-  const [isResolvingInviteWorkspace, setIsResolvingInviteWorkspace] = useState(false);
-  const inviteWorkspaceCheckKeyRef = useRef<string | null>(null);
+  useOrganizationInviteHandoff();
 
   const isOrganizationWorkspace = !!activeOrgId;
   const orgId = activeOrgId ?? user?.id;
@@ -235,107 +227,6 @@ export default function DashboardPage() {
   useEffect(() => {
     if (isLoaded && !isSignedIn) router.push("/");
   }, [isLoaded, isSignedIn, router]);
-
-  useEffect(() => {
-    if (
-      !isLoaded ||
-      !isSignedIn ||
-      !isOrganizationListLoaded ||
-      !setActive ||
-      isResolvingInviteWorkspace
-    ) {
-      return;
-    }
-
-    const params = new URLSearchParams(window.location.search);
-    const invitedOrgId = params.get("join_org");
-    const inviteCheckKey = `${user?.id ?? "unknown"}:${invitedOrgId ?? "single-pending"}`;
-    if (inviteWorkspaceCheckKeyRef.current === inviteCheckKey) return;
-    inviteWorkspaceCheckKeyRef.current = inviteCheckKey;
-
-    const currentOrgId = organization?.id ?? activeOrgId ?? null;
-    if (invitedOrgId && currentOrgId === invitedOrgId) {
-      window.history.replaceState(null, "", "/dashboard");
-      return;
-    }
-
-    const activateOrganization = setActive;
-    let cancelled = false;
-
-    async function resolveInviteWorkspace() {
-      try {
-        setIsResolvingInviteWorkspace(true);
-        const memberships = userMemberships.data ?? [];
-        const invitedMembership = invitedOrgId
-          ? memberships.find((membership) => membership.organization.id === invitedOrgId)
-          : undefined;
-
-        if (invitedMembership) {
-          await activateOrganization({
-            organization: invitedMembership.organization.id,
-            navigate: async ({ decorateUrl }) => {
-              window.location.replace(decorateUrl("/dashboard"));
-            },
-          });
-          return;
-        }
-
-        if (!user) return;
-
-        const invitations = await user.getOrganizationInvitations({ status: "pending" });
-        const pendingInvites = invitations.data ?? [];
-        const pendingInvite = invitedOrgId
-          ? pendingInvites.find((invite) => invite.publicOrganizationData.id === invitedOrgId)
-          : pendingInvites.length === 1
-          ? pendingInvites[0]
-          : undefined;
-
-        if (!pendingInvite) return;
-
-        const nextOrgId = pendingInvite.publicOrganizationData.id;
-        const nextOrgName = pendingInvite.publicOrganizationData.name;
-
-        await pendingInvite.accept();
-        await user.reload();
-        await activateOrganization({
-          organization: nextOrgId,
-          navigate: async ({ decorateUrl }) => {
-            window.location.replace(decorateUrl("/dashboard"));
-          },
-        });
-
-        if (!cancelled) {
-          window.history.replaceState(null, "", "/dashboard");
-          router.refresh();
-          toast.success(`Joined ${nextOrgName}`);
-        }
-      } catch (error) {
-        console.error("Failed to accept invited organization", error);
-        if (!cancelled) toast.error("Invite could not be accepted. Try the invite link again.");
-      } finally {
-        if (!cancelled) setIsResolvingInviteWorkspace(false);
-      }
-    }
-
-    if (invitedOrgId || user) {
-      void resolveInviteWorkspace();
-    }
-
-    return () => {
-      cancelled = true;
-    };
-  }, [
-    activeOrgId,
-    isLoaded,
-    isOrganizationListLoaded,
-    isResolvingInviteWorkspace,
-    isSignedIn,
-    organization?.id,
-    router,
-    setActive,
-    user,
-    userMemberships.data,
-  ]);
 
   useEffect(() => {
     if (!user) return;
@@ -466,17 +357,6 @@ export default function DashboardPage() {
     return `${(size / (1024 * 1024 * 1024)).toFixed(1)} GB`;
   }
 
-  function formatDuration(totalSeconds: number) {
-    if (totalSeconds < 60) return `${Math.round(totalSeconds)} seconds`;
-    const minutes = Math.floor(totalSeconds / 60);
-    const seconds = Math.round(totalSeconds % 60);
-    return `${minutes} min ${seconds} sec`;
-  }
-
-  function normalizeQuestion(value: string) {
-    return value.toLowerCase().replace(/[^\w\s.]/g, " ").replace(/\s+/g, " ").trim();
-  }
-
   function createAskAiMessage(role: "user" | "assistant", content: string): AskAiChatMessage {
     const id =
       typeof crypto !== "undefined" && "randomUUID" in crypto
@@ -484,65 +364,6 @@ export default function DashboardPage() {
         : `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 
     return { id, role, content };
-  }
-
-  function findRelevantFile(question: string, allowedTypes?: string[]) {
-    const normalized = normalizeQuestion(question);
-    const searchFiles = [...displayedFiles, ...((activeFiles ?? []).filter(
-      (file) => !displayedFiles.some((displayed) => displayed._id === file._id)
-    ))];
-
-    const filteredByType = allowedTypes?.length
-      ? searchFiles.filter((file) => allowedTypes.includes(file.type))
-      : searchFiles;
-
-    const byName = filteredByType.find((file) => {
-      const candidates = [
-        file.name.toLowerCase(),
-        file.name.toLowerCase().replace(/\.[^.]+$/, ""),
-      ];
-      return candidates.some((candidate) => normalized.includes(candidate));
-    });
-
-    if (byName) return byName;
-
-    if (allowedTypes?.includes("audio")) {
-      return filteredByType.find((file) => file.type === "audio") ?? null;
-    }
-    if (allowedTypes?.includes("video")) {
-      return filteredByType.find((file) => file.type === "video") ?? null;
-    }
-    if (allowedTypes?.includes("image")) {
-      return filteredByType.find((file) => file.type === "image") ?? null;
-    }
-
-    return filteredByType[0] ?? null;
-  }
-
-  async function readMediaDuration(file: FileItem) {
-    if (!file.url || !["audio", "video"].includes(file.type)) return null;
-
-    return await new Promise<number | null>((resolve) => {
-      const media = document.createElement(file.type === "audio" ? "audio" : "video");
-      media.preload = "metadata";
-      media.src = file.url!;
-
-      const cleanup = () => {
-        media.removeAttribute("src");
-        media.load();
-      };
-
-      media.onloadedmetadata = () => {
-        const duration = Number.isFinite(media.duration) ? media.duration : null;
-        cleanup();
-        resolve(duration);
-      };
-
-      media.onerror = () => {
-        cleanup();
-        resolve(null);
-      };
-    });
   }
 
   async function requestRemoteAskAi(question: string) {
@@ -562,7 +383,6 @@ export default function DashboardPage() {
         files: displayedFiles.map((file) => ({
           name: file.name,
           type: file.type,
-          url: file.url,
           size: file.size,
           isFavorite: file.isFavorite ?? false,
           folderId: file.folderId,
@@ -605,8 +425,8 @@ export default function DashboardPage() {
       } catch (error) {
         assistantMessage =
           error instanceof Error
-            ? `I could not reach the AI service.\n\n${error.message}\n\nIf you just updated the API key, restart the dev server once and try again.`
-            : "I could not reach the AI service. Restart the dev server and try again.";
+            ? `I could not reach Ask AI.\n\n${error.message}`
+            : "I could not reach Ask AI. Check your Gemini key and try again.";
       }
 
       setAskAiMessages((current) => [
@@ -2039,13 +1859,9 @@ export default function DashboardPage() {
                   id="ask-ai-question"
                   value={askAiQuestion}
                   onChange={(event) => setAskAiQuestion(event.target.value)}
-                  rows={askAiMessages.length > 0 || isAskAiLoading ? 3 : 8}
+                  rows={1}
                   placeholder="Ask about this workspace..."
-                  className={`w-full resize-none bg-transparent px-2 py-2 text-sm leading-6 text-zinc-800 outline-none placeholder:text-zinc-400 dark:text-zinc-100 dark:placeholder:text-zinc-500 ${
-                    askAiMessages.length > 0 || isAskAiLoading
-                      ? "max-h-36 min-h-24"
-                      : "max-h-[320px] min-h-[220px] sm:min-h-[260px]"
-                  }`}
+                  className="max-h-24 min-h-10 w-full resize-none bg-transparent px-2 py-2 text-sm leading-6 text-zinc-800 outline-none placeholder:text-zinc-400 dark:text-zinc-100 dark:placeholder:text-zinc-500"
                 />
                 <div className="flex items-center justify-between gap-2 border-t border-zinc-100 px-1 pt-2 dark:border-zinc-800">
                   <Button

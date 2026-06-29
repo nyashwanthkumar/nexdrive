@@ -1,36 +1,150 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# NexDrive Project Report
 
-## Getting Started
+NexDrive is a cloud file manager built with Next.js, Clerk, Convex, React, TypeScript, and Tailwind CSS. It provides personal workspaces, organization workspaces, file management, sharing, activity tracking, trash recovery, and role-based team access.
 
-First, run the development server:
+## Objective
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+The goal of NexDrive is to provide a simple Google Drive style experience where users can upload, organize, preview, share, and manage files in either a personal workspace or an organization workspace.
+
+## Tech Stack
+
+- Next.js 16 App Router for the frontend and API routes.
+- React 19 and TypeScript for the UI.
+- Tailwind CSS and shadcn-style primitives for styling.
+- Clerk for authentication, users, organizations, invitations, and roles.
+- Convex for database, file storage, queries, mutations, and scheduled cleanup.
+- Sonner for toast feedback.
+
+## Main Features
+
+- User authentication with Clerk.
+- Personal workspace for every user.
+- Organization workspace with admin/member roles.
+- Team modal for organization members.
+- Admins can invite users, revoke invites, remove members, and change roles.
+- Members can view team members only, without admin powers.
+- File upload, preview, rename, favourite, download, and delete.
+- Folder creation, rename, favourite, trash, restore, and delete.
+- Search, sort, grid/list view, and bulk selection.
+- Share links with expiry and revoke support.
+- Trash view with restore, permanent delete, and Delete all.
+- Activity tracking and storage usage.
+- Workspace-aware access control in Convex.
+
+## Project Structure
+
+```text
+app/
+  _components/
+    convex-client-provider.tsx
+    header.tsx
+    theme-provider.tsx
+  api/
+    ask-ai/
+    clerk/webhook/
+    organization/
+  dashboard/
+    _components/
+      upload-button.tsx
+    _features/
+      organization-workspace/
+      delete.tsx
+      feature-types.tsx
+      file-feature-filters.tsx
+      folder-actions.tsx
+      rename.tsx
+      selection.tsx
+      share.tsx
+      sidebar.tsx
+      sorting.tsx
+      trash.tsx
+      upload.tsx
+      view-mode.tsx
+    page.tsx
+  share/[token]/
+  tasks/
+  globals.css
+  layout.tsx
+  page.tsx
+
+components/ui/
+convex/
+lib/
+public/
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## Important Files
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+- `app/dashboard/page.tsx`: main dashboard coordinator.
+- `app/dashboard/_components/upload-button.tsx`: upload logic and Convex file creation.
+- `app/dashboard/_features/organization-workspace/`: complete organization workspace feature.
+- `app/api/organization/`: server routes for team data, invites, and invite revoke.
+- `app/_components/header.tsx`: header, account menu, workspace switcher, organization profile.
+- `app/_components/convex-client-provider.tsx`: Clerk and Convex provider setup.
+- `convex/files.ts`: file, folder, share, activity, trash, and permission logic.
+- `convex/schema.ts`: database schema.
+- `convex/users.ts`: user sync logic.
+- `convex/crons.ts`: scheduled cleanup tasks.
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## Organization Workspace
 
-## Learn More
+The organization workspace code is grouped here:
 
-To learn more about Next.js, take a look at the following resources:
+```text
+app/dashboard/_features/organization-workspace/
+```
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+- `team-dialog.tsx`: Team button, Team modal, admin controls, and member read-only view.
+- `api.ts`: client helpers for organization team and invitation API calls.
+- `use-organization-invite-handoff.ts`: accepts pending invites and redirects users into the organization workspace.
+- `types.ts`: organization team types.
+- `utils.ts`: member name, role, and join-date helpers.
+- `index.ts`: exports the org workspace feature.
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+Server routes:
 
-## Deploy on Vercel
+- `app/api/organization/team/route.ts`: returns team members and pending invites.
+- `app/api/organization/invitations/route.ts`: creates organization invites.
+- `app/api/organization/invitations/[invitationId]/route.ts`: revokes pending invites.
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+## Role Behavior
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+- Personal workspace: only the owner can manage their files.
+- Organization admin: can upload, manage files, invite members, remove members, and change roles.
+- Organization member: can use the organization workspace and view the Team modal, but cannot invite, remove, or change roles.
+
+## Data Model
+
+Convex tables:
+
+- `users`: synced user profiles.
+- `files`: file metadata, storage references, workspace ownership, favourites, and trash state.
+- `folders`: folder metadata, workspace ownership, favourites, and trash state.
+- `shareLinks`: public share tokens with expiry and revoke state.
+- `activityLogs`: user and workspace activity history.
+
+## Run Locally
+
+```powershell
+npm run dev
+```
+
+Open:
+
+```text
+http://localhost:3000
+```
+
+## Verification Commands
+
+```powershell
+npx tsc --noEmit
+npm run lint
+npm run build
+```
+
+## Current Notes
+
+- Lint currently passes with existing warnings for unused Ask AI helper functions and generated Convex eslint comments.
+- Organization workspace is separated into its own feature folder for easy explanation during review.
+- The root README is the only project documentation file.

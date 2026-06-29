@@ -1,92 +1,51 @@
-import { connection, NextResponse } from "next/server";
-import { readFile } from "node:fs/promises";
-import path from "node:path";
+import { NextResponse } from "next/server";
+
+export const runtime = "nodejs";
+
+type AskAiMessage = {
+  role: "user" | "assistant";
+  content: string;
+};
 
 type AskAiRequest = {
-  question: string;
-  messages?: Array<{
-    role: "user" | "assistant";
-    content: string;
-  }>;
-  workspaceTitle: string;
-  viewLabel: string;
-  files: Array<{
+  question?: string;
+  messages?: AskAiMessage[];
+  workspaceTitle?: string;
+  viewLabel?: string;
+  files?: Array<{
     name: string;
     type: string;
-    url?: string | null;
     size?: number;
     isFavorite?: boolean;
     folderId?: string;
   }>;
-  folders: Array<{
+  folders?: Array<{
     name: string;
     isFavorite?: boolean;
   }>;
-  activeShares: number;
-  storageTotal: number;
-  storageLimit: number;
+  activeShares?: number;
+  storageTotal?: number;
+  storageLimit?: number;
 };
 
-async function resolveOpenAiApiKey() {
-  if (process.env.OPENAI_API_KEY) {
-    return process.env.OPENAI_API_KEY.trim();
-  }
-
-  if (process.env.NEXT_PUBLIC_OPENAI_API_KEY) {
-    return process.env.NEXT_PUBLIC_OPENAI_API_KEY.trim();
-  }
-
-  try {
-    const envPath = path.join(process.cwd(), ".env.local");
-    const contents = await readFile(envPath, "utf8");
-    const match =
-      contents.match(/^OPENAI_API_KEY=(.+)$/m) ??
-      contents.match(/^NEXT_PUBLIC_OPENAI_API_KEY=(.+)$/m);
-    return match?.[1]?.trim() || "";
-  } catch {
-    return "";
-  }
+function getGeminiApiKey() {
+  return (
+    process.env.GEMINI_API_KEY?.trim() ||
+    process.env.GOOGLE_AI_API_KEY?.trim() ||
+    process.env.GOOGLE_API_KEY?.trim() ||
+    ""
+  );
 }
 
-async function resolveGeminiApiKey() {
-  if (process.env.GEMINI_API_KEY) {
-    return process.env.GEMINI_API_KEY.trim();
-  }
-
-  if (process.env.NEXT_PUBLIC_GEMINI_API_KEY) {
-    return process.env.NEXT_PUBLIC_GEMINI_API_KEY.trim();
-  }
-
-  try {
-    const envPath = path.join(process.cwd(), ".env.local");
-    const contents = await readFile(envPath, "utf8");
-    const match =
-      contents.match(/^GEMINI_API_KEY=(.+)$/m) ??
-      contents.match(/^NEXT_PUBLIC_GEMINI_API_KEY=(.+)$/m);
-    return match?.[1]?.trim() || "";
-  } catch {
-    return "";
-  }
+function getGeminiModel() {
+  return process.env.GEMINI_MODEL?.trim() || "gemini-2.0-flash";
 }
 
-function extractOutputText(payload: unknown) {
-  const direct = (payload as { output_text?: string })?.output_text;
-  if (typeof direct === "string" && direct.trim()) return direct.trim();
-
-  const output = (payload as {
-    output?: Array<{
-      content?: Array<{ type?: string; text?: string }>;
-    }>;
-  })?.output;
-
-  if (!Array.isArray(output)) return "";
-
-  return output
-    .flatMap((item) => item.content ?? [])
-    .filter((item) => item.type === "output_text")
-    .map((item) => item.text ?? "")
-    .join("\n")
-    .trim();
+function formatBytes(size = 0) {
+  if (!Number.isFinite(size) || size <= 0) return "0 MB";
+  if (size < 1024 * 1024) return `${Math.max(1, Math.round(size / 1024))} KB`;
+  if (size < 1024 * 1024 * 1024) return `${(size / (1024 * 1024)).toFixed(1)} MB`;
+  return `${(size / (1024 * 1024 * 1024)).toFixed(1)} GB`;
 }
 
 function extractGeminiText(payload: unknown) {
@@ -102,236 +61,136 @@ function extractGeminiText(payload: unknown) {
     .trim();
 }
 
-function inferMimeType(file: AskAiRequest["files"][number]) {
-  const lower = file.name.toLowerCase();
-  if (file.type === "pdf" || lower.endsWith(".pdf")) return "application/pdf";
-  if (lower.endsWith(".png")) return "image/png";
-  if (lower.endsWith(".webp")) return "image/webp";
-  if (lower.endsWith(".gif")) return "image/gif";
-  if (file.type === "image" || lower.endsWith(".jpg") || lower.endsWith(".jpeg")) return "image/jpeg";
-  if (lower.endsWith(".txt")) return "text/plain";
-  if (lower.endsWith(".csv")) return "text/csv";
-  return null;
+function readGeminiError(payload: unknown) {
+  const message = (payload as { error?: { message?: string } })?.error?.message;
+  return typeof message === "string" && message.trim() ? message.trim() : "";
 }
 
-function pickRelevantFiles(question: string, files: AskAiRequest["files"]) {
-  const normalizedQuestion = question.toLowerCase();
-  const keywords = normalizedQuestion.split(/[^a-z0-9]+/).filter((word) => word.length > 2);
+function buildPrompt(body: Required<AskAiRequest>) {
+  const files = body.files.slice(0, 40).map((file) => ({
+    name: file.name,
+    type: file.type,
+    size: formatBytes(file.size),
+    favorite: Boolean(file.isFavorite),
+  }));
 
-  return [...files]
-    .filter((file) => !!file.url)
-    .map((file) => {
-      const lowerName = file.name.toLowerCase();
-      let score = 0;
+  const folders = body.folders.slice(0, 30).map((folder) => ({
+    name: folder.name,
+    favorite: Boolean(folder.isFavorite),
+  }));
 
-      if (keywords.some((keyword) => lowerName.includes(keyword))) score += 5;
-      if (normalizedQuestion.includes("certificate") && lowerName.includes("certificate")) score += 6;
-      if (normalizedQuestion.includes("intern") && lowerName.includes("intern")) score += 6;
-      if (normalizedQuestion.includes("id")) score += 2;
-      if (file.type === "pdf") score += 4;
-      if (file.type === "image") score += 3;
-      if (typeof file.size === "number" && file.size <= 12 * 1024 * 1024) score += 2;
+  const recentMessages = body.messages
+    .slice(-8)
+    .map((message) => `${message.role === "assistant" ? "Assistant" : "User"}: ${message.content}`)
+    .join("\n");
 
-      return { file, score };
-    })
-    .sort((a, b) => b.score - a.score)
-    .filter((entry) => entry.score > 0)
-    .slice(0, 2)
-    .map((entry) => entry.file);
-}
-
-async function buildFileInputs(files: AskAiRequest["files"]) {
-  const inputs: Array<Record<string, unknown>> = [];
-
-  for (const file of files) {
-    if (!file.url) continue;
-
-    const mimeType = inferMimeType(file);
-    if (!mimeType) continue;
-
-    if (mimeType === "application/pdf") {
-      inputs.push({
-        type: "input_file",
-        file_url: file.url,
-      });
-      continue;
-    }
-
-    const response = await fetch(file.url);
-    if (!response.ok) continue;
-
-    const buffer = Buffer.from(await response.arrayBuffer());
-    if (buffer.length > 8 * 1024 * 1024) continue;
-
-    if (mimeType.startsWith("text/")) {
-      inputs.push({
-        type: "input_text",
-        text: `File: ${file.name}\n${buffer.toString("utf8").slice(0, 12000)}`,
-      });
-      continue;
-    }
-
-    inputs.push({
-      type: "input_image",
-      image_url: `data:${mimeType};base64,${buffer.toString("base64")}`,
-    });
-  }
-
-  return inputs;
+  return [
+    "You are NexDrive AI, a concise file workspace assistant inside NexDrive.",
+    "Help the user understand, organize, clean up, or review files in their current workspace.",
+    "Use only the workspace metadata below. Do not claim to read file contents unless the metadata proves it.",
+    "If the answer is not available from the metadata, say what is missing and suggest the next practical step.",
+    "",
+    `Workspace: ${body.workspaceTitle}`,
+    `Current view: ${body.viewLabel}`,
+    `Visible files: ${body.files.length}`,
+    `Visible folders: ${body.folders.length}`,
+    `Active share links: ${body.activeShares}`,
+    `Storage used: ${formatBytes(body.storageTotal)} of ${formatBytes(body.storageLimit)}`,
+    "",
+    "Files:",
+    JSON.stringify(files, null, 2),
+    "",
+    "Folders:",
+    JSON.stringify(folders, null, 2),
+    "",
+    "Recent chat:",
+    recentMessages || "No earlier messages.",
+    "",
+    `User question: ${body.question}`,
+  ].join("\n");
 }
 
 export async function POST(request: Request) {
   try {
-    await connection();
-    const body = (await request.json()) as AskAiRequest;
-    const openAiApiKey = await resolveOpenAiApiKey();
-    const geminiApiKey = await resolveGeminiApiKey();
+    const apiKey = getGeminiApiKey();
 
-    const conversation = (body.messages ?? [])
-      .slice(-8)
-      .map((message) => `${message.role === "assistant" ? "Assistant" : "User"}: ${message.content}`)
-      .join("\n");
-
-    const relevantFiles = pickRelevantFiles(body.question, body.files);
-    const fileInputs = await buildFileInputs(relevantFiles);
-
-    const prompt = [
-      "You are NexDrive AI, a helpful file workspace assistant inside a product called NexDrive.",
-      "Answer naturally like a real chat assistant.",
-      "Use the workspace metadata and any attached files below.",
-      "If the user asks for something not present in the files or metadata, say that clearly.",
-      "",
-      `Workspace: ${body.workspaceTitle}`,
-      `Current view: ${body.viewLabel}`,
-      `Visible files: ${body.files.length}`,
-      `Visible folders: ${body.folders.length}`,
-      `Active shares: ${body.activeShares}`,
-      `Storage used: ${body.storageTotal} bytes of ${body.storageLimit} bytes`,
-      "",
-      "Files metadata:",
-      JSON.stringify(body.files.slice(0, 30)),
-      "",
-      "Folders metadata:",
-      JSON.stringify(body.folders.slice(0, 20)),
-      "",
-      "Recent conversation:",
-      conversation || "No previous messages.",
-      "",
-      relevantFiles.length > 0
-        ? `Attached relevant files: ${relevantFiles.map((file) => file.name).join(", ")}`
-        : "No relevant file attachments were found for this question.",
-      "",
-      `Latest user question: ${body.question}`,
-    ].join("\n");
-
-    if (openAiApiKey) {
-      const openAiResponse = await fetch("https://api.openai.com/v1/responses", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${openAiApiKey}`,
-        },
-        body: JSON.stringify({
-          model: "gpt-4.1-mini",
-          input: [
-            {
-              role: "user",
-              content: [
-                { type: "input_text", text: prompt },
-                ...fileInputs,
-              ],
-            },
-          ],
-        }),
-      });
-
-      if (openAiResponse.ok) {
-        const payload = await openAiResponse.json();
-        const message = extractOutputText(payload);
-
-        if (message) {
-          return NextResponse.json({ message });
-        }
-      } else {
-        const errorText = await openAiResponse.text();
-        if (!errorText.includes("insufficient_quota") && !errorText.includes("billing")) {
-          return NextResponse.json(
-            { error: errorText || "OpenAI request failed" },
-            { status: 502 }
-          );
-        }
-      }
-    }
-
-    if (!geminiApiKey) {
+    if (!apiKey) {
       return NextResponse.json(
-        { error: "No working AI provider key is configured" },
+        {
+          error:
+            "Ask AI needs a Gemini API key. Add GEMINI_API_KEY to .env.local, restart npm.cmd run dev, and try again.",
+        },
         { status: 503 }
       );
     }
 
-    const geminiParts: Array<Record<string, unknown>> = [{ text: prompt }];
-    for (const input of fileInputs) {
-      if (input.type === "input_text") {
-        geminiParts.push({ text: String(input.text ?? "") });
-      }
-      if (input.type === "input_image") {
-        const imageUrl = String(input.image_url ?? "");
-        const match = imageUrl.match(/^data:(.+);base64,(.+)$/);
-        if (match) {
-          geminiParts.push({
-            inline_data: {
-              mime_type: match[1],
-              data: match[2],
-            },
-          });
-        }
-      }
-      if (input.type === "input_file" && relevantFiles.length > 0) {
-        const file = relevantFiles.find((candidate) => candidate.url === input.file_url);
-        if (file) {
-          geminiParts.push({ text: `Attached file: ${file.name}` });
-        }
-      }
+    const body = (await request.json().catch(() => null)) as AskAiRequest | null;
+    const question = body?.question?.trim();
+
+    if (!question) {
+      return NextResponse.json({ error: "Ask AI needs a question." }, { status: 400 });
     }
 
-    const geminiResponse = await fetch(
-      "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent",
+    const normalizedBody: Required<AskAiRequest> = {
+      question,
+      messages: Array.isArray(body?.messages) ? body.messages : [],
+      workspaceTitle: body?.workspaceTitle?.trim() || "NexDrive workspace",
+      viewLabel: body?.viewLabel?.trim() || "Current view",
+      files: Array.isArray(body?.files) ? body.files : [],
+      folders: Array.isArray(body?.folders) ? body.folders : [],
+      activeShares: Number.isFinite(body?.activeShares) ? Number(body?.activeShares) : 0,
+      storageTotal: Number.isFinite(body?.storageTotal) ? Number(body?.storageTotal) : 0,
+      storageLimit: Number.isFinite(body?.storageLimit) ? Number(body?.storageLimit) : 0,
+    };
+
+    const model = getGeminiModel();
+    const response = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`,
       {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "x-goog-api-key": geminiApiKey,
+          "x-goog-api-key": apiKey,
         },
         body: JSON.stringify({
           contents: [
             {
-              parts: geminiParts,
+              role: "user",
+              parts: [{ text: buildPrompt(normalizedBody) }],
             },
           ],
+          generationConfig: {
+            temperature: 0.3,
+            maxOutputTokens: 900,
+          },
         }),
       }
     );
 
-    if (!geminiResponse.ok) {
-      const errorText = await geminiResponse.text();
+    const payload = (await response.json().catch(() => null)) as unknown;
+
+    if (!response.ok) {
+      const providerMessage = readGeminiError(payload);
       return NextResponse.json(
-        { error: errorText || "Gemini request failed" },
+        {
+          error: providerMessage
+            ? `Gemini request failed: ${providerMessage}`
+            : "Gemini request failed. Check GEMINI_API_KEY and try again.",
+        },
         { status: 502 }
       );
     }
 
-    const geminiPayload = await geminiResponse.json();
-    const geminiMessage = extractGeminiText(geminiPayload);
+    const message = extractGeminiText(payload);
 
-    if (!geminiMessage) {
+    if (!message) {
       return NextResponse.json(
-        { error: "Gemini returned an empty response" },
+        { error: "Gemini returned an empty answer. Try a shorter question." },
         { status: 502 }
       );
     }
 
-    return NextResponse.json({ message: geminiMessage });
+    return NextResponse.json({ message });
   } catch (error) {
     return NextResponse.json(
       {

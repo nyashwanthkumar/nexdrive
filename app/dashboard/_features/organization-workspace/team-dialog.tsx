@@ -20,87 +20,15 @@ import {
   UserPlus,
   Users,
 } from "lucide-react";
-
-type WorkspaceRole = "org:member" | "org:admin";
-
-type TeamMembership = {
-  id: string;
-  role: string;
-  roleName?: string;
-  createdAt?: number | string;
-  publicUserData?: {
-    firstName: string | null;
-    lastName: string | null;
-    imageUrl: string;
-    identifier: string;
-    userId?: string;
-    username?: string;
-  };
-};
-
-type TeamInvitation = {
-  id: string;
-  emailAddress: string;
-  role: string;
-  roleName?: string;
-  status: string;
-  createdAt?: number | string;
-};
-
-type OrganizationWorkspaceResource = {
-  id: string;
-  name: string;
-  membersCount: number;
-  pendingInvitationsCount: number;
-  getMemberships: (params?: {
-    initialPage?: number;
-    pageSize?: number;
-    role?: string[];
-    query?: string;
-  }) => Promise<{ data: TeamMembership[] }>;
-  getInvitations: (params?: {
-    initialPage?: number;
-    pageSize?: number;
-    status?: string[];
-  }) => Promise<{ data: TeamInvitation[] }>;
-  updateMember: (params: {
-    userId: string;
-    role: WorkspaceRole;
-  }) => Promise<TeamMembership>;
-  removeMember: (userId: string) => Promise<TeamMembership>;
-};
-
-type OrganizationWorkspaceFeatureProps = {
-  workspaceName: string;
-  isOrganization: boolean;
-  canManage: boolean;
-  fileCount: number;
-  activeShares: number;
-};
-
-function roleTitle(role?: string | null) {
-  if (role === "org:admin" || role === "admin") return "Admin";
-  if (role === "org:member" || role === "member") return "Member";
-  return "Owner";
-}
-
-function memberName(member: TeamMembership) {
-  const userData = member.publicUserData;
-  const fullName = [userData?.firstName, userData?.lastName].filter(Boolean).join(" ");
-  return fullName || userData?.username || userData?.identifier || "Member";
-}
-
-function memberInitial(member: TeamMembership) {
-  return memberName(member).trim().charAt(0).toUpperCase() || "N";
-}
-
-function formatJoinDate(value?: Date | number | string) {
-  if (!value) return "Recently joined";
-  return `Joined ${new Date(value).toLocaleDateString(undefined, {
-    month: "short",
-    day: "numeric",
-  })}`;
-}
+import type {
+  OrganizationWorkspaceFeatureProps,
+  OrganizationWorkspaceResource,
+  TeamInvitation,
+  TeamMembership,
+  WorkspaceRole,
+} from "./types";
+import { fetchOrganizationTeam, revokeOrganizationInvite, sendOrganizationInvite } from "./api";
+import { formatJoinDate, memberInitial, memberName, roleTitle } from "./utils";
 
 export function OrganizationWorkspaceFeature({
   workspaceName,
@@ -135,21 +63,7 @@ export function OrganizationWorkspaceFeature({
 
     try {
       setIsLoadingTeam(true);
-      const response = await fetch("/api/organization/team", {
-        method: "GET",
-      });
-
-      if (!response.ok) {
-        const payload = (await response.json().catch(() => null)) as { error?: string } | null;
-        throw new Error(payload?.error || "Could not load team");
-      }
-
-      const payload = (await response.json()) as {
-        joinedCount?: number;
-        pendingCount?: number;
-        members?: TeamMembership[];
-        invitations?: TeamInvitation[];
-      };
+      const payload = await fetchOrganizationTeam();
 
       setMembers(payload.members ?? []);
       setInvitations(canManage ? payload.invitations ?? [] : []);
@@ -175,22 +89,7 @@ export function OrganizationWorkspaceFeature({
 
     try {
       setIsSendingInvite(true);
-      const response = await fetch("/api/organization/invitations", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          emailAddress: email,
-          role: inviteRole,
-        }),
-      });
-
-      if (!response.ok) {
-        const payload = (await response.json().catch(() => null)) as { error?: string } | null;
-        throw new Error(payload?.error || "Failed to send invite");
-      }
-
+      await sendOrganizationInvite(email, inviteRole);
       setInviteEmail("");
       setInviteRole("org:member");
       toast.success("Invitation sent");
@@ -239,15 +138,7 @@ export function OrganizationWorkspaceFeature({
 
     try {
       setWorkingInviteId(invitation.id);
-      const response = await fetch(`/api/organization/invitations/${invitation.id}`, {
-        method: "DELETE",
-      });
-
-      if (!response.ok) {
-        const payload = (await response.json().catch(() => null)) as { error?: string } | null;
-        throw new Error(payload?.error || "Failed to revoke invitation");
-      }
-
+      await revokeOrganizationInvite(invitation.id);
       toast.success("Invitation revoked");
       await loadTeam();
     } catch (error) {
