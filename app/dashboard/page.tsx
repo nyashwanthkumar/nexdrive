@@ -761,19 +761,19 @@ export default function DashboardPage() {
   function canManageFile(file: FileItem) {
     if (!user?.id) return false;
     const owner = (file.userId ?? "") === user.id || file.orgId === user.id;
-    return isOrganizationWorkspace ? isWorkspaceAdmin : owner;
+    return isOrganizationWorkspace ? isWorkspaceAdmin || owner : owner;
   }
 
   function canManageFolder(folder: { orgId: string; userId?: string }) {
     if (!user?.id) return false;
     const owner = (folder.userId ?? "") === user.id || folder.orgId === user.id;
-    return isOrganizationWorkspace ? isWorkspaceAdmin : owner;
+    return isOrganizationWorkspace ? isWorkspaceAdmin || owner : owner;
   }
 
   return (
     <>
-      <main className="min-h-[calc(100vh-64px)] bg-[#f6f7f9] dark:bg-zinc-950">
-        <div className="grid min-h-[calc(100vh-64px)] grid-cols-1 lg:grid-cols-[220px_minmax(0,1fr)]">
+      <main className="min-h-[calc(100vh-64px)] overflow-x-clip bg-[#f7f8fb] dark:bg-zinc-950">
+        <div className="grid min-h-[calc(100vh-64px)] min-w-0 grid-cols-1 lg:grid-cols-[220px_minmax(0,1fr)]">
 
             {/* Sidebar */}
           <aside className="relative flex flex-col gap-3 border-b border-zinc-200/80 bg-white px-3 py-3 dark:border-zinc-800 dark:bg-zinc-950 lg:max-h-[calc(100vh-64px)] lg:overflow-y-auto lg:border-b-0 lg:border-r lg:py-5">
@@ -834,7 +834,7 @@ export default function DashboardPage() {
                   />
                 </div>
                 <p className="mt-2 text-xs text-zinc-500 dark:text-zinc-400">
-                  {formatBytes(storageTotal)} / {formatBytes(storageLimit)} • {storageStats?.fileCount ?? 0} files
+                  {formatBytes(storageTotal)} / {formatBytes(storageLimit)} - {storageStats?.fileCount ?? 0} files
                 </p>
                 <p className="mt-1 text-xs text-zinc-400 dark:text-zinc-500">
                   {activeShares.length} active shares
@@ -965,10 +965,10 @@ export default function DashboardPage() {
           </aside>
 
           {/* Content */}
-          <section className="flex flex-col gap-4 px-4 py-4 sm:gap-5 sm:px-6 sm:py-6">
+          <section className="flex min-w-0 flex-col gap-4 overflow-x-clip px-3 py-4 sm:gap-5 sm:px-6 sm:py-6">
 
             {/* Search */}
-            <div className="nexdrive-fade-up flex items-center gap-3 rounded-2xl border border-zinc-200/80 bg-white px-4 py-2.5 shadow-sm shadow-zinc-200/40 dark:border-zinc-800 dark:bg-zinc-900 dark:shadow-none">
+            <div className="nexdrive-fade-up flex min-w-0 items-center gap-3 rounded-xl border border-zinc-200/80 bg-white/95 px-4 py-2.5 shadow-sm shadow-zinc-200/40 dark:border-zinc-800 dark:bg-zinc-900 dark:shadow-none">
               <Search className="h-4 w-4 shrink-0 text-zinc-400" />
               <Input
                 value={search}
@@ -979,12 +979,12 @@ export default function DashboardPage() {
             </div>
 
             {/* Header */}
-            <div className="nexdrive-fade-up flex flex-wrap items-center justify-between gap-3 [animation-delay:40ms]">
-              <div>
+            <div className="nexdrive-fade-up flex min-w-0 flex-wrap items-center justify-between gap-3 [animation-delay:40ms]">
+              <div className="min-w-0 flex-1">
                 <h1 className="text-xl font-semibold tracking-tight text-zinc-950 dark:text-zinc-50">{viewMeta.label}</h1>
                 <p className="mt-0.5 text-xs text-zinc-500 dark:text-zinc-400">{viewMeta.description}</p>
               </div>
-              <div className="relative z-20 flex flex-wrap items-center justify-end gap-2 rounded-2xl border border-zinc-200/80 bg-white/85 p-1.5 shadow-sm shadow-zinc-200/50 backdrop-blur dark:border-zinc-800 dark:bg-zinc-900/85 dark:shadow-none">
+              <div className="relative z-20 flex w-full min-w-0 flex-wrap items-center gap-2 rounded-xl border border-zinc-200/80 bg-white/90 p-1.5 shadow-sm shadow-zinc-200/50 backdrop-blur dark:border-zinc-800 dark:bg-zinc-900/85 dark:shadow-none sm:w-auto sm:justify-end">
                 {!isLoading && toolbarItemCount > 0 && (
                   <span className="hidden rounded-lg bg-zinc-100 px-2.5 py-2 text-xs font-medium text-zinc-500 dark:bg-zinc-800 dark:text-zinc-400 sm:inline-flex">
                     {toolbarItemCount}{" "}
@@ -1026,7 +1026,7 @@ export default function DashboardPage() {
                 )}
                 {selectableFiles.length + selectableFolders.length > 0 && (
                   isSelectionMode ? (
-                    <div className="flex items-center gap-1.5 rounded-full border border-zinc-200/80 bg-zinc-50/95 px-1.5 py-1 shadow-inner shadow-white/70 dark:border-zinc-800 dark:bg-zinc-950/90 dark:shadow-none">
+                    <div className="flex min-w-0 items-center gap-1.5 rounded-full border border-zinc-200/80 bg-zinc-50/95 px-1.5 py-1 shadow-inner shadow-white/70 dark:border-zinc-800 dark:bg-zinc-950/90 dark:shadow-none">
                       <button
                         type="button"
                         onClick={clearSelection}
@@ -1216,7 +1216,7 @@ export default function DashboardPage() {
             )}
 
             {!isLoading && visibleFolders.length > 0 && displayMode === "grid" && (
-              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+              <div className="grid min-w-0 grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
                 {visibleFolders.map((folder, index) => (
                   <div
                     key={folder._id}
@@ -1230,7 +1230,7 @@ export default function DashboardPage() {
                         handleFolderSurfaceClick(folder);
                       }
                     }}
-                    className={`nexdrive-item group relative flex h-20 items-center gap-3 rounded-2xl border px-4 text-left shadow-sm transition-all duration-200 ease-out ${
+                    className={`nexdrive-item group relative flex min-w-0 items-center gap-3 rounded-xl border px-4 py-4 text-left shadow-sm transition-all duration-200 ease-out sm:h-20 ${
                       selectedFolderIds.includes(folder._id)
                         ? "border-sky-200 bg-sky-50/80 shadow-sky-100/80 dark:border-sky-500/40 dark:bg-sky-500/10 dark:shadow-none"
                         : "border-zinc-200/80 bg-white shadow-zinc-200/40 hover:-translate-y-0.5 hover:border-zinc-300 hover:shadow-md dark:border-zinc-800 dark:bg-zinc-900 dark:shadow-none dark:hover:border-zinc-700"
@@ -1303,7 +1303,7 @@ export default function DashboardPage() {
             )}
 
             {!isLoading && visibleFolders.length > 0 && displayMode === "list" && (
-              <div className="overflow-hidden rounded-2xl border border-zinc-200/80 bg-white shadow-sm shadow-zinc-200/40 dark:border-zinc-800 dark:bg-zinc-900 dark:shadow-none">
+              <div className="min-w-0 overflow-hidden rounded-xl border border-zinc-200/80 bg-white shadow-sm shadow-zinc-200/40 dark:border-zinc-800 dark:bg-zinc-900 dark:shadow-none">
                 {visibleFolders.map((folder, index) => (
                   <div
                     key={folder._id}
@@ -1394,7 +1394,7 @@ export default function DashboardPage() {
 
             {/* File list */}
             {!isLoading && displayedFiles.length > 0 && displayMode === "list" && (
-              <div className="overflow-hidden rounded-2xl border border-zinc-200/80 bg-white shadow-sm shadow-zinc-200/40 dark:border-zinc-800 dark:bg-zinc-900 dark:shadow-none">
+              <div className="min-w-0 overflow-hidden rounded-xl border border-zinc-200/80 bg-white shadow-sm shadow-zinc-200/40 dark:border-zinc-800 dark:bg-zinc-900 dark:shadow-none">
                 {displayedFiles.map((file, index) => (
                   <div
                     key={file._id}
@@ -1448,7 +1448,7 @@ export default function DashboardPage() {
                       </div>
                     </div>
 
-                    <div className="flex shrink-0 flex-wrap items-center gap-2 lg:justify-end" onClick={(event) => event.stopPropagation()}>
+                    <div className="flex min-w-0 shrink-0 flex-wrap items-center gap-2 lg:justify-end" onClick={(event) => event.stopPropagation()}>
                       {activeView !== "trash" ? (
                         <div className="flex items-center gap-1 rounded-2xl border border-zinc-200/80 bg-zinc-50/90 p-1 dark:border-zinc-800 dark:bg-zinc-950/80">
                           <Button
@@ -1556,7 +1556,7 @@ export default function DashboardPage() {
 
             {/* File grid */}
             {!isLoading && displayedFiles.length > 0 && displayMode === "grid" && (
-              <div className="grid gap-3 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
+              <div className="grid min-w-0 grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
                 {displayedFiles.map((file, index) => (
                   <div
                     key={file._id}
@@ -1570,7 +1570,7 @@ export default function DashboardPage() {
                         handleFileSurfaceClick(file);
                       }
                     }}
-                    className={`nexdrive-item group relative flex flex-col overflow-hidden rounded-2xl border transition-all duration-200 ease-out ${
+                    className={`nexdrive-item group relative flex min-w-0 flex-col overflow-hidden rounded-xl border transition-all duration-200 ease-out ${
                       selectedFileIds.includes(file._id)
                         ? "border-sky-200 bg-sky-50/80 shadow-md shadow-sky-100/70 dark:border-sky-500/40 dark:bg-sky-500/10 dark:shadow-none"
                         : "border-zinc-200/80 bg-white shadow-sm shadow-zinc-200/40 hover:-translate-y-0.5 hover:border-zinc-300 hover:shadow-md hover:shadow-zinc-200/70 dark:border-zinc-800 dark:bg-zinc-900 dark:shadow-none dark:hover:border-zinc-700"
@@ -1583,7 +1583,7 @@ export default function DashboardPage() {
                     )}
                     {/* Thumbnail */}
                     <div
-                      className="relative h-28 w-full overflow-hidden bg-zinc-100 dark:bg-zinc-800"
+                      className="relative h-32 w-full overflow-hidden bg-zinc-100 dark:bg-zinc-800 sm:h-28"
                     >
                       <FileCardThumbnail file={file} />
 
@@ -1627,9 +1627,9 @@ export default function DashboardPage() {
                     </div>
 
                     {/* Info + actions */}
-                    <div className="flex flex-1 flex-col gap-3 px-3 py-3">
+                    <div className="flex min-w-0 flex-1 flex-col gap-3 px-3 py-3">
                       <div className="flex items-start justify-between gap-2">
-                        <div className="min-w-0">
+                        <div className="min-w-0 flex-1">
                           <p className="line-clamp-1 text-[15px] font-semibold text-zinc-900 dark:text-zinc-50">
                             {file.name}
                           </p>
@@ -1645,7 +1645,7 @@ export default function DashboardPage() {
                         </span>
                       </div>
 
-                      <div className="flex items-center justify-between gap-2" onClick={(event) => event.stopPropagation()}>
+                      <div className="flex min-w-0 items-center justify-between gap-2" onClick={(event) => event.stopPropagation()}>
                         {activeView !== "trash" ? (
                           <div className="flex items-center gap-1 rounded-2xl border border-zinc-200/80 bg-zinc-50/90 p-1 dark:border-zinc-800 dark:bg-zinc-950/80">
                             <Button

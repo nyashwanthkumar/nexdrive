@@ -18,7 +18,7 @@ export function SelectionFeature({
   if (selectedItemCount <= 0) return null;
 
   return (
-    <div className="flex flex-wrap items-center justify-between gap-3 rounded-[28px] border border-zinc-200/80 bg-zinc-100/80 px-3 py-2 shadow-sm shadow-zinc-200/40 backdrop-blur dark:border-zinc-800 dark:bg-zinc-900/85 dark:shadow-none">
+    <div className="flex min-w-0 flex-wrap items-center justify-between gap-3 rounded-xl border border-zinc-200/80 bg-white/90 px-3 py-2 shadow-sm shadow-zinc-200/40 backdrop-blur dark:border-zinc-800 dark:bg-zinc-900/85 dark:shadow-none">
       <div className="flex items-center gap-2.5">
         <button
           type="button"

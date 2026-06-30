@@ -99,12 +99,12 @@ export function Header() {
 
   return (
     <header className="relative z-50 border-b border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-950">
-      <div className="mx-auto flex h-16 w-full items-center justify-between px-4 sm:px-6">
-        <Link href="/" className="text-2xl font-medium text-zinc-900 dark:text-zinc-50 sm:text-3xl">
+      <div className="mx-auto flex h-16 w-full min-w-0 items-center justify-between gap-3 px-4 sm:px-6">
+        <Link href="/" className="shrink-0 text-2xl font-semibold tracking-tight text-zinc-900 dark:text-zinc-50 sm:text-3xl">
           NexDrive
         </Link>
 
-        <div className="flex items-center gap-2">
+        <div className="flex min-w-0 items-center justify-end gap-2">
           <ThemeToggle />
           {isSignedIn ? (
             <>
@@ -604,7 +604,7 @@ function OrganizationSecurityPanel({
                       )}
                     </div>
                     <p className="mt-1 text-xs text-zinc-500 dark:text-zinc-400">
-                      {[browser || "Unknown browser", activity.ipAddress, location].filter(Boolean).join(" · ")}
+                      {[browser || "Unknown browser", activity.ipAddress, location].filter(Boolean).join(" - ")}
                     </p>
                     <p className="mt-1 text-xs text-zinc-400 dark:text-zinc-500">
                       Last active {new Date(session.lastActiveAt).toLocaleString()}

@@ -182,7 +182,7 @@ export function UploadButton({
         <Button
           variant="outline"
           disabled={disabled}
-          className="h-14 w-auto rounded-2xl border-zinc-200 bg-white px-6 text-base font-medium text-zinc-950 shadow-md shadow-zinc-200/80 hover:bg-zinc-50 hover:text-zinc-950 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-50 dark:shadow-none dark:hover:bg-zinc-800"
+          className="h-12 w-auto rounded-xl border-zinc-200 bg-white px-5 text-sm font-semibold text-zinc-950 shadow-sm shadow-zinc-200/70 hover:bg-zinc-50 hover:text-zinc-950 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-50 dark:shadow-none dark:hover:bg-zinc-800 sm:h-14 sm:px-6 sm:text-base"
         >
           <Plus className="mr-2 h-5 w-5" />
           Upload
