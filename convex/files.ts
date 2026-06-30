@@ -948,6 +948,10 @@ export const getActivityLogs = query({
       return [];
     }
 
+    if (!isPersonalWorkspace(args.orgId) && !isOrgAdminActor(identity, args.actorRole)) {
+      return [];
+    }
+
     return await ctx.db
       .query("activityLogs")
       .withIndex("by_org", (q) => q.eq("orgId", args.orgId))

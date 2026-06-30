@@ -212,9 +212,13 @@ export default function DashboardPage() {
   );
 
   const userRole = useQuery(api.files.getUserRole, orgId ? {} : "skip");
+  const workspaceRole = orgRole ?? userRole ?? null;
+  const isWorkspaceAdmin = workspaceRole === "org:admin" || workspaceRole === "admin";
+  const canManageCurrentWorkspace = !isOrganizationWorkspace || isWorkspaceAdmin;
+  const canViewActivity = !isOrganizationWorkspace || isWorkspaceAdmin;
   const activityLogs = useQuery(
     api.files.getActivityLogs,
-    orgId ? { orgId, actorRole: orgRole ?? undefined } : "skip"
+    orgId && canViewActivity ? { orgId, actorRole: orgRole ?? undefined } : "skip"
   );
   const storageStats = useQuery(
     api.files.getStorageStats,
@@ -316,6 +320,13 @@ export default function DashboardPage() {
     );
   }, [visibleFolders]);
 
+  useEffect(() => {
+    if (activeView === "activity" && !canViewActivity) {
+      setActiveView("recent");
+      setCurrentFolderId(null);
+    }
+  }, [activeView, canViewActivity]);
+
   if (!isLoaded || !isSignedIn) {
     return (
       <div className="flex h-64 items-center justify-center">
@@ -324,9 +335,6 @@ export default function DashboardPage() {
     );
   }
 
-  const workspaceRole = orgRole ?? userRole ?? null;
-  const isWorkspaceAdmin = workspaceRole === "org:admin" || workspaceRole === "admin";
-  const canManageCurrentWorkspace = !isOrganizationWorkspace || isWorkspaceAdmin;
   const selectedFiles = displayedFiles.filter((file) => selectedFileIds.includes(file._id));
   const selectedFolders = visibleFolders.filter((folder) => selectedFolderIds.includes(folder._id));
   const activeShares = (shareLinks ?? []).filter((share) => !share.isExpired && !share.isRevoked);
@@ -858,15 +866,17 @@ export default function DashboardPage() {
                   setCurrentFolderId(null);
                 }}
               />
-              <SidebarItemFeature
-                active={activeView === "activity"}
-                icon={<Activity className="h-4 w-4" />}
-                label="Activity"
-                onClick={() => {
-                  setActiveView("activity");
-                  setCurrentFolderId(null);
-                }}
-              />
+              {canViewActivity && (
+                <SidebarItemFeature
+                  active={activeView === "activity"}
+                  icon={<Activity className="h-4 w-4" />}
+                  label="Activity"
+                  onClick={() => {
+                    setActiveView("activity");
+                    setCurrentFolderId(null);
+                  }}
+                />
+              )}
               <SidebarItemFeature
                 active={activeView === "folders"}
                 icon={<FolderOpen className="h-4 w-4" />}
@@ -1110,7 +1120,7 @@ export default function DashboardPage() {
             {!isLoading &&
               displayedFiles.length === 0 &&
               visibleFolders.length === 0 &&
-              (activeView !== "activity" || (activityLogs ?? []).length === 0) && (
+              (activeView !== "activity" || (canViewActivity && (activityLogs ?? []).length === 0)) && (
               <div className="nexdrive-fade-up flex flex-1 flex-col items-center justify-center gap-3 py-24 text-center">
                 <div className="flex h-11 w-11 items-center justify-center rounded-lg border border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-900">
                   {activeView === "trash" ? (
@@ -1188,7 +1198,7 @@ export default function DashboardPage() {
               </div>
             )}
 
-            {!isLoading && activeView === "activity" && (activityLogs ?? []).length > 0 && (
+            {!isLoading && canViewActivity && activeView === "activity" && (activityLogs ?? []).length > 0 && (
               <div className="nexdrive-fade-up overflow-hidden rounded-2xl border border-zinc-200/80 bg-white shadow-sm shadow-zinc-200/40 dark:border-zinc-800 dark:bg-zinc-900 dark:shadow-none">
                 {(activityLogs ?? []).map((item, index) => (
                   <div
