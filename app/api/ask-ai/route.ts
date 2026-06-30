@@ -28,17 +28,12 @@ type AskAiRequest = {
   storageLimit?: number;
 };
 
-function getGeminiApiKey() {
-  return (
-    process.env.GEMINI_API_KEY?.trim() ||
-    process.env.GOOGLE_AI_API_KEY?.trim() ||
-    process.env.GOOGLE_API_KEY?.trim() ||
-    ""
-  );
+function getGroqApiKey() {
+  return process.env.GROQ_API_KEY?.trim() || "";
 }
 
-function getGeminiModel() {
-  return process.env.GEMINI_MODEL?.trim() || "gemini-2.0-flash";
+function getGroqModel() {
+  return process.env.GROQ_MODEL?.trim() || "llama-3.3-70b-versatile";
 }
 
 function formatBytes(size = 0) {
@@ -48,20 +43,13 @@ function formatBytes(size = 0) {
   return `${(size / (1024 * 1024 * 1024)).toFixed(1)} GB`;
 }
 
-function extractGeminiText(payload: unknown) {
-  const candidates = (payload as { candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }> })
-    ?.candidates;
-
-  if (!Array.isArray(candidates)) return "";
-
-  return candidates
-    .flatMap((candidate) => candidate.content?.parts ?? [])
-    .map((part) => part.text ?? "")
-    .join("\n")
-    .trim();
+function extractGroqText(payload: unknown) {
+  const choices = (payload as { choices?: Array<{ message?: { content?: string } }> })?.choices;
+  if (!Array.isArray(choices) || !choices.length) return "";
+  return (choices[0]?.message?.content ?? "").trim();
 }
 
-function readGeminiError(payload: unknown) {
+function readGroqError(payload: unknown) {
   const message = (payload as { error?: { message?: string } })?.error?.message;
   return typeof message === "string" && message.trim() ? message.trim() : "";
 }
@@ -112,13 +100,13 @@ function buildPrompt(body: Required<AskAiRequest>) {
 
 export async function POST(request: Request) {
   try {
-    const apiKey = getGeminiApiKey();
+    const apiKey = getGroqApiKey();
 
     if (!apiKey) {
       return NextResponse.json(
         {
           error:
-            "Ask AI needs a Gemini API key. Add GEMINI_API_KEY to .env.local, restart npm.cmd run dev, and try again.",
+            "Ask AI needs a Groq API key. Add GROQ_API_KEY to .env.local, restart npm.cmd run dev, and try again.",
         },
         { status: 503 }
       );
@@ -143,49 +131,45 @@ export async function POST(request: Request) {
       storageLimit: Number.isFinite(body?.storageLimit) ? Number(body?.storageLimit) : 0,
     };
 
-    const model = getGeminiModel();
-    const response = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`,
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-goog-api-key": apiKey,
-        },
-        body: JSON.stringify({
-          contents: [
-            {
-              role: "user",
-              parts: [{ text: buildPrompt(normalizedBody) }],
-            },
-          ],
-          generationConfig: {
-            temperature: 0.3,
-            maxOutputTokens: 900,
+    const model = getGroqModel();
+    const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify({
+        model,
+        messages: [
+          {
+            role: "user",
+            content: buildPrompt(normalizedBody),
           },
-        }),
-      }
-    );
+        ],
+        temperature: 0.3,
+        max_tokens: 900,
+      }),
+    });
 
     const payload = (await response.json().catch(() => null)) as unknown;
 
     if (!response.ok) {
-      const providerMessage = readGeminiError(payload);
+      const providerMessage = readGroqError(payload);
       return NextResponse.json(
         {
           error: providerMessage
-            ? `Gemini request failed: ${providerMessage}`
-            : "Gemini request failed. Check GEMINI_API_KEY and try again.",
+            ? `Groq request failed: ${providerMessage}`
+            : "Groq request failed. Check GROQ_API_KEY and try again.",
         },
         { status: 502 }
       );
     }
 
-    const message = extractGeminiText(payload);
+    const message = extractGroqText(payload);
 
     if (!message) {
       return NextResponse.json(
-        { error: "Gemini returned an empty answer. Try a shorter question." },
+        { error: "Groq returned an empty answer. Try a shorter question." },
         { status: 502 }
       );
     }
