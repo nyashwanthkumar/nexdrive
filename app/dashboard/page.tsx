@@ -984,7 +984,7 @@ export default function DashboardPage() {
                 <h1 className="text-xl font-semibold tracking-tight text-zinc-950 dark:text-zinc-50">{viewMeta.label}</h1>
                 <p className="mt-0.5 text-xs text-zinc-500 dark:text-zinc-400">{viewMeta.description}</p>
               </div>
-              <div className="relative z-20 flex w-full min-w-0 flex-wrap items-center gap-2 rounded-xl border border-zinc-200/80 bg-white/90 p-1.5 shadow-sm shadow-zinc-200/50 backdrop-blur dark:border-zinc-800 dark:bg-zinc-900/85 dark:shadow-none sm:w-auto sm:justify-end">
+              <div className="relative z-[150] flex w-full min-w-0 flex-wrap items-center gap-2 rounded-xl border border-zinc-200/80 bg-white/90 p-1.5 shadow-sm shadow-zinc-200/50 backdrop-blur dark:border-zinc-800 dark:bg-zinc-900/85 dark:shadow-none sm:w-auto sm:justify-end">
                 {!isLoading && toolbarItemCount > 0 && (
                   <span className="hidden rounded-lg bg-zinc-100 px-2.5 py-2 text-xs font-medium text-zinc-500 dark:bg-zinc-800 dark:text-zinc-400 sm:inline-flex">
                     {toolbarItemCount}{" "}
@@ -1216,7 +1216,7 @@ export default function DashboardPage() {
             )}
 
             {!isLoading && visibleFolders.length > 0 && displayMode === "grid" && (
-              <div className="grid min-w-0 grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+              <div className="relative z-0 grid min-w-0 grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
                 {visibleFolders.map((folder, index) => (
                   <div
                     key={folder._id}
@@ -1303,7 +1303,7 @@ export default function DashboardPage() {
             )}
 
             {!isLoading && visibleFolders.length > 0 && displayMode === "list" && (
-              <div className="min-w-0 overflow-hidden rounded-xl border border-zinc-200/80 bg-white shadow-sm shadow-zinc-200/40 dark:border-zinc-800 dark:bg-zinc-900 dark:shadow-none">
+              <div className="relative z-0 min-w-0 overflow-hidden rounded-xl border border-zinc-200/80 bg-white shadow-sm shadow-zinc-200/40 dark:border-zinc-800 dark:bg-zinc-900 dark:shadow-none">
                 {visibleFolders.map((folder, index) => (
                   <div
                     key={folder._id}
@@ -1394,7 +1394,7 @@ export default function DashboardPage() {
 
             {/* File list */}
             {!isLoading && displayedFiles.length > 0 && displayMode === "list" && (
-              <div className="min-w-0 overflow-hidden rounded-xl border border-zinc-200/80 bg-white shadow-sm shadow-zinc-200/40 dark:border-zinc-800 dark:bg-zinc-900 dark:shadow-none">
+              <div className="relative z-0 min-w-0 overflow-hidden rounded-xl border border-zinc-200/80 bg-white shadow-sm shadow-zinc-200/40 dark:border-zinc-800 dark:bg-zinc-900 dark:shadow-none">
                 {displayedFiles.map((file, index) => (
                   <div
                     key={file._id}
@@ -1556,7 +1556,7 @@ export default function DashboardPage() {
 
             {/* File grid */}
             {!isLoading && displayedFiles.length > 0 && displayMode === "grid" && (
-              <div className="grid min-w-0 grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
+              <div className="relative z-0 grid min-w-0 grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
                 {displayedFiles.map((file, index) => (
                   <div
                     key={file._id}
