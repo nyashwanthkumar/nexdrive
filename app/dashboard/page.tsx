@@ -333,6 +333,13 @@ export default function DashboardPage() {
     }
   }, [activeView, canViewActivity]);
 
+  useEffect(() => {
+    if (!canManageCurrentWorkspace) {
+      setIsFolderDialogOpen(false);
+      setFolderName("");
+    }
+  }, [canManageCurrentWorkspace]);
+
   if (!isLoaded || !isSignedIn) {
     return (
       <div className="flex h-64 items-center justify-center">
@@ -1090,18 +1097,21 @@ export default function DashboardPage() {
                     Folders
                   </h2>
                   <p className="mt-1 text-xs text-zinc-500 dark:text-zinc-400">
-                    Keep related uploads together. Folders moved to trash can be restored later.
+                    {canManageCurrentWorkspace
+                      ? "Keep related uploads together. Folders moved to trash can be restored later."
+                      : "Browse the folders shared with this workspace."}
                   </p>
                 </div>
-                <Button
-                  size="sm"
-                  className="h-9 rounded-xl"
-                  disabled={!canManageCurrentWorkspace}
-                  onClick={() => setIsFolderDialogOpen(true)}
-                >
-                  <Plus className="mr-1.5 h-3.5 w-3.5" />
-                  Create folder
-                </Button>
+                {canManageCurrentWorkspace && (
+                  <Button
+                    size="sm"
+                    className="h-9 rounded-xl"
+                    onClick={() => setIsFolderDialogOpen(true)}
+                  >
+                    <Plus className="mr-1.5 h-3.5 w-3.5" />
+                    Create folder
+                  </Button>
+                )}
               </div>
             )}
 
