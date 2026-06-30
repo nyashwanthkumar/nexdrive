@@ -218,7 +218,9 @@ export default function DashboardPage() {
   );
 
   const userRole = useQuery(api.files.getUserRole, orgId ? {} : "skip");
-  const workspaceRole = orgRole ?? organizationMembershipRole ?? userRole ?? null;
+  const workspaceRole = isOrganizationWorkspace
+    ? orgRole ?? organizationMembershipRole ?? null
+    : userRole ?? null;
   const isWorkspaceAdmin = isAdminRole(workspaceRole);
   const canManageCurrentWorkspace = !isOrganizationWorkspace || isWorkspaceAdmin;
   const canViewActivity = !isOrganizationWorkspace || isWorkspaceAdmin;
@@ -306,6 +308,10 @@ export default function DashboardPage() {
   }, [displayedFiles]);
 
   const viewMeta = getViewMeta(activeView, currentFolder?.name);
+  const viewDescription =
+    activeView === "folders" && !canManageCurrentWorkspace
+      ? "Browse folders shared with this workspace"
+      : viewMeta.description;
 
   const visibleFolders = useMemo(() => {
     if (activeView === "trash") {
@@ -584,6 +590,12 @@ export default function DashboardPage() {
 
   async function submitFolder(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
+
+    if (!canManageCurrentWorkspace) {
+      setFolderName("");
+      setIsFolderDialogOpen(false);
+      return;
+    }
 
     if (!orgId) {
       toast.error("Organization or user not found");
@@ -1005,7 +1017,7 @@ export default function DashboardPage() {
             <div className="nexdrive-fade-up flex min-w-0 flex-wrap items-center justify-between gap-3 [animation-delay:40ms]">
               <div className="min-w-0 flex-1">
                 <h1 className="text-xl font-semibold tracking-tight text-zinc-950 dark:text-zinc-50">{viewMeta.label}</h1>
-                <p className="mt-0.5 text-xs text-zinc-500 dark:text-zinc-400">{viewMeta.description}</p>
+                <p className="mt-0.5 text-xs text-zinc-500 dark:text-zinc-400">{viewDescription}</p>
               </div>
               <div className="relative z-[150] flex w-full min-w-0 flex-wrap items-center gap-2 rounded-xl border border-zinc-200/80 bg-white/90 p-1.5 shadow-sm shadow-zinc-200/50 backdrop-blur dark:border-zinc-800 dark:bg-zinc-900/85 dark:shadow-none sm:w-auto sm:justify-end">
                 {!isLoading && toolbarItemCount > 0 && (
@@ -2143,6 +2155,7 @@ export default function DashboardPage() {
       <Dialog
         open={isFolderDialogOpen}
         onOpenChange={(isOpen) => {
+          if (isOpen && !canManageCurrentWorkspace) return;
           setIsFolderDialogOpen(isOpen);
           if (!isOpen) setFolderName("");
         }}
