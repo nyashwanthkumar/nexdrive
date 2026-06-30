@@ -81,6 +81,10 @@ type FileItem = {
   folderId?: Id<"folders">;
 };
 
+function isAdminRole(role: string | null | undefined) {
+  return role === "org:admin" || role === "admin";
+}
+
 function FileTypeIcon({ type }: { type: string }) {
   if (type === "image") return <ImageIcon className="h-7 w-7 text-sky-500" />;
   if (type === "pdf") return <FileText className="h-7 w-7 text-red-500" />;
@@ -193,8 +197,10 @@ export default function DashboardPage() {
   const [isEmptyingTrash, setIsEmptyingTrash] = useState(false);
   useOrganizationInviteHandoff();
 
-  const isOrganizationWorkspace = !!activeOrgId;
-  const orgId = activeOrgId ?? user?.id;
+  const organizationMembershipRole = (organization as { membership?: { role?: string } } | null)
+    ?.membership?.role;
+  const isOrganizationWorkspace = !!(activeOrgId ?? organization?.id);
+  const orgId = activeOrgId ?? organization?.id ?? user?.id;
 
   const activeFiles = useQuery(
     api.files.getFiles,
@@ -212,8 +218,8 @@ export default function DashboardPage() {
   );
 
   const userRole = useQuery(api.files.getUserRole, orgId ? {} : "skip");
-  const workspaceRole = orgRole ?? userRole ?? null;
-  const isWorkspaceAdmin = workspaceRole === "org:admin" || workspaceRole === "admin";
+  const workspaceRole = orgRole ?? organizationMembershipRole ?? userRole ?? null;
+  const isWorkspaceAdmin = isAdminRole(workspaceRole);
   const canManageCurrentWorkspace = !isOrganizationWorkspace || isWorkspaceAdmin;
   const canViewActivity = !isOrganizationWorkspace || isWorkspaceAdmin;
   const activityLogs = useQuery(
