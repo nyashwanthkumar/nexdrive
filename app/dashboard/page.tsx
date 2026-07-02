@@ -453,7 +453,7 @@ export default function DashboardPage() {
         assistantMessage =
           error instanceof Error
             ? `I could not reach Ask AI.\n\n${error.message}`
-            : "I could not reach Ask AI. Check your Gemini key and try again.";
+            : "I could not reach Ask AI. Check your AI API key and try again.";
       }
 
       setAskAiMessages((current) => [

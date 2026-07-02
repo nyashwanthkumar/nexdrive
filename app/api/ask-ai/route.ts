@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 
 export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
 
 type AskAiMessage = {
   role: "user" | "assistant";
@@ -28,12 +29,36 @@ type AskAiRequest = {
   storageLimit?: number;
 };
 
-function getGroqApiKey() {
-  return process.env.GROQ_API_KEY?.trim() || "";
+type AiProviderConfig = {
+  apiKey: string;
+  endpoint: string;
+  model: string;
+  headers?: Record<string, string>;
+};
+
+function cleanApiKey(value: string | undefined) {
+  const key = value?.trim().replace(/^["']|["']$/g, "") || "";
+  return key.replace(/^Bearer\s+/i, "").trim();
 }
 
-function getGroqModel() {
-  return process.env.GROQ_MODEL?.trim() || "llama-3.3-70b-versatile";
+function getOpenRouterModel() {
+  return process.env.OPENROUTER_MODEL?.trim() || "openai/gpt-4o-mini";
+}
+
+function getAiProviderConfig(): AiProviderConfig | null {
+  const openRouterApiKey = cleanApiKey(process.env.OPENROUTER_API_KEY);
+
+  if (!openRouterApiKey) return null;
+
+  return {
+    apiKey: openRouterApiKey,
+    endpoint: "https://openrouter.ai/api/v1/chat/completions",
+    model: getOpenRouterModel(),
+    headers: {
+      "HTTP-Referer": process.env.NEXT_PUBLIC_APP_URL?.trim() || "http://localhost:3000",
+      "X-Title": "NexDrive",
+    },
+  };
 }
 
 function formatBytes(size = 0) {
@@ -43,13 +68,13 @@ function formatBytes(size = 0) {
   return `${(size / (1024 * 1024 * 1024)).toFixed(1)} GB`;
 }
 
-function extractGroqText(payload: unknown) {
+function extractOpenRouterText(payload: unknown) {
   const choices = (payload as { choices?: Array<{ message?: { content?: string } }> })?.choices;
   if (!Array.isArray(choices) || !choices.length) return "";
   return (choices[0]?.message?.content ?? "").trim();
 }
 
-function readGroqError(payload: unknown) {
+function readOpenRouterError(payload: unknown) {
   const message = (payload as { error?: { message?: string } })?.error?.message;
   return typeof message === "string" && message.trim() ? message.trim() : "";
 }
@@ -100,13 +125,13 @@ function buildPrompt(body: Required<AskAiRequest>) {
 
 export async function POST(request: Request) {
   try {
-    const apiKey = getGroqApiKey();
+    const provider = getAiProviderConfig();
 
-    if (!apiKey) {
+    if (!provider) {
       return NextResponse.json(
         {
           error:
-            "Ask AI needs a Groq API key. Add GROQ_API_KEY to .env.local, restart npm.cmd run dev, and try again.",
+            "Ask AI needs an OpenRouter API key. Add OPENROUTER_API_KEY to .env.local, restart npm.cmd run dev, and try again.",
         },
         { status: 503 }
       );
@@ -131,15 +156,15 @@ export async function POST(request: Request) {
       storageLimit: Number.isFinite(body?.storageLimit) ? Number(body?.storageLimit) : 0,
     };
 
-    const model = getGroqModel();
-    const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+    const response = await fetch(provider.endpoint, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        Authorization: `Bearer ${apiKey}`,
+        Authorization: `Bearer ${provider.apiKey}`,
+        ...provider.headers,
       },
       body: JSON.stringify({
-        model,
+        model: provider.model,
         messages: [
           {
             role: "user",
@@ -154,22 +179,22 @@ export async function POST(request: Request) {
     const payload = (await response.json().catch(() => null)) as unknown;
 
     if (!response.ok) {
-      const providerMessage = readGroqError(payload);
+      const providerMessage = readOpenRouterError(payload);
       return NextResponse.json(
         {
           error: providerMessage
-            ? `Groq request failed: ${providerMessage}`
-            : "Groq request failed. Check GROQ_API_KEY and try again.",
+            ? `OpenRouter request failed: ${providerMessage}`
+            : "OpenRouter request failed. Check OPENROUTER_API_KEY and try again.",
         },
         { status: 502 }
       );
     }
 
-    const message = extractGroqText(payload);
+    const message = extractOpenRouterText(payload);
 
     if (!message) {
       return NextResponse.json(
-        { error: "Groq returned an empty answer. Try a shorter question." },
+        { error: "OpenRouter returned an empty answer. Try a shorter question." },
         { status: 502 }
       );
     }
