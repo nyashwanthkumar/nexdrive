@@ -26,6 +26,7 @@ export default defineSchema({
       v.literal("video")
     ),
     isFavorite: v.optional(v.boolean()),
+    isPinned: v.optional(v.boolean()),
     shouldDelete: v.optional(v.boolean()),
     deletedAt: v.optional(v.number()),
   }).index("by_org", ["orgId"]),
@@ -34,6 +35,7 @@ export default defineSchema({
     orgId: v.string(),
     userId: v.optional(v.string()),
     isFavorite: v.optional(v.boolean()),
+    isPinned: v.optional(v.boolean()),
     shouldDelete: v.optional(v.boolean()),
     deletedAt: v.optional(v.number()),
   }).index("by_org", ["orgId"]),

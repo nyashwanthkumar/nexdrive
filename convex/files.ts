@@ -76,6 +76,18 @@ function isFolderOwner(folder: { userId?: string; orgId: string }, identity: { s
   return (folder.userId ?? "") === identity.subject || folder.orgId === identity.subject;
 }
 
+function canManageFileForMutation(
+  file: { userId?: string; orgId: string },
+  identity: { subject: string },
+  actorRole?: string
+) {
+  const personalWorkspace = isPersonalWorkspace(file.orgId);
+  const owner = isFileOwner(file, identity);
+  const admin = isOrgAdminActor(identity, actorRole);
+
+  return personalWorkspace ? owner : admin || owner;
+}
+
 async function logFileActivity(
   ctx: MutationCtx,
   args: {
@@ -157,6 +169,7 @@ export const createFile = mutation({
       size: args.size,
       type: args.type,
       isFavorite: false,
+      isPinned: false,
       shouldDelete: false,
       deletedAt: undefined,
     });
@@ -349,6 +362,106 @@ export const toggleFavorite = mutation({
   },
 });
 
+export const togglePinned = mutation({
+  args: {
+    fileId: v.id("files"),
+    actorRole: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const identity = await ctx.auth.getUserIdentity();
+
+    if (!identity) {
+      throw new Error("you must be logged in");
+    }
+
+    const file = await ctx.db.get(args.fileId);
+
+    if (!file) {
+      throw new Error("File not found");
+    }
+
+    if (!canAccessWorkspace(file.orgId, identity, args.actorRole)) {
+      throw new Error("You do not have access to this file");
+    }
+
+    assertOrgAdminForMutation(
+      file.orgId,
+      identity,
+      args.actorRole,
+      "Only organization admins can update files"
+    );
+
+    await ctx.db.patch(args.fileId, {
+      isPinned: !(file.isPinned ?? false),
+    });
+  },
+});
+
+export const moveFilesToFolder = mutation({
+  args: {
+    fileIds: v.array(v.id("files")),
+    folderId: v.optional(v.id("folders")),
+    actorRole: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const identity = await ctx.auth.getUserIdentity();
+
+    if (!identity) {
+      throw new Error("you must be logged in");
+    }
+
+    if (args.fileIds.length === 0) {
+      throw new Error("Choose at least one file to move");
+    }
+
+    let targetOrgId: string | null = null;
+
+    if (args.folderId) {
+      const folder = await ctx.db.get(args.folderId);
+
+      if (!folder || (folder.shouldDelete ?? false)) {
+        throw new Error("Folder not found");
+      }
+
+      if (!canAccessWorkspace(folder.orgId, identity, args.actorRole)) {
+        throw new Error("You do not have access to this folder");
+      }
+
+      targetOrgId = folder.orgId;
+    }
+
+    const uniqueFileIds = Array.from(new Set(args.fileIds));
+
+    for (const fileId of uniqueFileIds) {
+      const file = await ctx.db.get(fileId);
+
+      if (!file || (file.shouldDelete ?? false)) {
+        throw new Error("File not found");
+      }
+
+      if (!canAccessWorkspace(file.orgId, identity, args.actorRole)) {
+        throw new Error("You do not have access to this file");
+      }
+
+      if (!canManageFileForMutation(file, identity, args.actorRole)) {
+        throw new Error("You can only move files you manage");
+      }
+
+      if (targetOrgId && file.orgId !== targetOrgId) {
+        throw new Error("Files can only move to folders in the same workspace");
+      }
+
+      targetOrgId ??= file.orgId;
+    }
+
+    for (const fileId of uniqueFileIds) {
+      await ctx.db.patch(fileId, {
+        folderId: args.folderId,
+      });
+    }
+  },
+});
+
 export const createFolder = mutation({
   args: {
     name: v.string(),
@@ -388,6 +501,7 @@ export const createFolder = mutation({
       orgId: args.orgId,
       userId: identity.subject,
       isFavorite: false,
+      isPinned: false,
       shouldDelete: false,
       deletedAt: undefined,
     });
@@ -418,6 +532,7 @@ export const getFolders = query({
         folders.map((folder) => ({
           ...folder,
           isFavorite: folder.isFavorite ?? false,
+          isPinned: folder.isPinned ?? false,
           shouldDelete: folder.shouldDelete ?? false,
         }))
       );
@@ -455,6 +570,41 @@ export const toggleFavoriteFolder = mutation({
 
     await ctx.db.patch(args.folderId, {
       isFavorite: !(folder.isFavorite ?? false),
+    });
+  },
+});
+
+export const togglePinnedFolder = mutation({
+  args: {
+    folderId: v.id("folders"),
+    actorRole: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const identity = await ctx.auth.getUserIdentity();
+
+    if (!identity) {
+      throw new Error("you must be logged in");
+    }
+
+    const folder = await ctx.db.get(args.folderId);
+
+    if (!folder) {
+      throw new Error("Folder not found");
+    }
+
+    if (!canAccessWorkspace(folder.orgId, identity, args.actorRole)) {
+      throw new Error("You do not have access to this folder");
+    }
+
+    assertOrgAdminForMutation(
+      folder.orgId,
+      identity,
+      args.actorRole,
+      "Only organization admins can update folders"
+    );
+
+    await ctx.db.patch(args.folderId, {
+      isPinned: !(folder.isPinned ?? false),
     });
   },
 });
@@ -992,6 +1142,7 @@ export const getFiles = query({
         ...file,
         userId: file.userId ?? "",
         isFavorite: file.isFavorite ?? false,
+        isPinned: file.isPinned ?? false,
         shouldDelete: file.shouldDelete ?? false,
         deletedAt: file.deletedAt,
         url: await ctx.storage.getUrl(file.fileId),

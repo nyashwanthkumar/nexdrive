@@ -11,6 +11,7 @@ type FileItem = {
   size?: number;
   url?: string | null;
   isFavorite?: boolean;
+  isPinned?: boolean;
   folderId?: Id<"folders">;
 };
 
@@ -21,8 +22,13 @@ type FolderItem = {
   userId?: string;
   shouldDelete?: boolean;
   isFavorite?: boolean;
+  isPinned?: boolean;
   deletedAt?: number;
 };
+
+function comparePinned(a: { isPinned?: boolean }, b: { isPinned?: boolean }) {
+  return Number(b.isPinned ?? false) - Number(a.isPinned ?? false);
+}
 
 export function getDisplayedFiles(params: {
   activeFiles: FileItem[];
@@ -38,7 +44,9 @@ export function getDisplayedFiles(params: {
   const filteredFiles = files.filter((file) => {
     const matchesSearch = file.name.toLowerCase().includes(search.toLowerCase());
     const matchesFolder =
-      activeView === "recent" || activeView === "starred" || activeView === "trash"
+      activeView === "recent" ||
+      activeView === "starred" ||
+      activeView === "trash"
         ? true
         : currentFolderId
         ? file.folderId === currentFolderId
@@ -60,6 +68,8 @@ export function getDisplayedFiles(params: {
   });
 
   return [...filteredFiles].sort((a, b) => {
+    const pinnedComparison = activeView === "trash" ? 0 : comparePinned(a, b);
+    if (pinnedComparison !== 0) return pinnedComparison;
     if (sortMode === "oldest") return a._creationTime - b._creationTime;
     if (sortMode === "nameAsc") return a.name.localeCompare(b.name);
     if (sortMode === "nameDesc") return b.name.localeCompare(a.name);
@@ -82,7 +92,7 @@ export function getVisibleFolders(params: {
           !(folder.shouldDelete ?? false) &&
           folder.name.toLowerCase().includes(search.toLowerCase())
       )
-      .sort((a, b) => a.name.localeCompare(b.name));
+      .sort((a, b) => comparePinned(a, b) || a.name.localeCompare(b.name));
   }
 
   if (activeView === "starred") {
@@ -93,7 +103,7 @@ export function getVisibleFolders(params: {
           (folder.isFavorite ?? false) &&
           folder.name.toLowerCase().includes(search.toLowerCase())
       )
-      .sort((a, b) => a.name.localeCompare(b.name));
+      .sort((a, b) => comparePinned(a, b) || a.name.localeCompare(b.name));
   }
 
   return [];

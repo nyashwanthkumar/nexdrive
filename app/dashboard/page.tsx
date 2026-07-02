@@ -32,6 +32,7 @@ import {
   Moon,
   Music,
   Pencil,
+  Pin,
   Plus,
   RotateCcw,
   Search,
@@ -78,6 +79,7 @@ type FileItem = {
   size?: number;
   url?: string | null;
   isFavorite?: boolean;
+  isPinned?: boolean;
   folderId?: Id<"folders">;
 };
 
@@ -143,6 +145,8 @@ export default function DashboardPage() {
   const restoreFile = useMutation(api.files.restoreFile);
   const permanentlyDeleteFile = useMutation(api.files.permanentlyDeleteFile);
   const toggleFavorite = useMutation(api.files.toggleFavorite);
+  const togglePinned = useMutation(api.files.togglePinned);
+  const moveFilesToFolder = useMutation(api.files.moveFilesToFolder);
   const renameFile = useMutation(api.files.renameFile);
   const createFolder = useMutation(api.files.createFolder);
   const deleteFolder = useMutation(api.files.deleteFolder);
@@ -150,6 +154,7 @@ export default function DashboardPage() {
   const permanentlyDeleteFolder = useMutation(api.files.permanentlyDeleteFolder);
   const renameFolder = useMutation(api.files.renameFolder);
   const toggleFavoriteFolder = useMutation(api.files.toggleFavoriteFolder);
+  const togglePinnedFolder = useMutation(api.files.togglePinnedFolder);
   const createShareLink = useMutation(api.files.createShareLink);
   const revokeShareLink = useMutation(api.files.revokeShareLink);
   const syncCurrentUser = useMutation(api.users.syncCurrentUser);
@@ -195,6 +200,8 @@ export default function DashboardPage() {
   const [isAskAiLoading, setIsAskAiLoading] = useState(false);
   const [isEmptyTrashDialogOpen, setIsEmptyTrashDialogOpen] = useState(false);
   const [isEmptyingTrash, setIsEmptyingTrash] = useState(false);
+  const [isMoveToFolderDialogOpen, setIsMoveToFolderDialogOpen] = useState(false);
+  const [isMovingToFolder, setIsMovingToFolder] = useState(false);
   useOrganizationInviteHandoff();
 
   const organizationMembershipRole = (organization as { membership?: { role?: string } } | null)
@@ -363,8 +370,10 @@ export default function DashboardPage() {
   const selectableFiles = displayedFiles.filter((file) => canManageFile(file));
   const selectableFolders = visibleFolders.filter((folder) => canManageFolder(folder));
   const selectedItemCount = selectedFiles.length + selectedFolders.length;
+  const selectedMovableFiles = selectedFiles.filter((file) => canManageFile(file));
   const toolbarItemCount = displayedFiles.length + visibleFolders.length;
   const selectableItemCount = selectableFiles.length + selectableFolders.length;
+  const moveTargetFolders = (folders ?? []).filter((folder) => !(folder.shouldDelete ?? false));
   const trashedFolders = (folders ?? []).filter((folder) => folder.shouldDelete ?? false);
   const emptyTrashFiles = (trashFiles ?? []).filter((file) => canManageFile(file));
   const emptyTrashFolders = trashedFolders.filter((folder) => canManageFolder(folder));
@@ -412,11 +421,13 @@ export default function DashboardPage() {
           type: file.type,
           size: file.size,
           isFavorite: file.isFavorite ?? false,
+          isPinned: file.isPinned ?? false,
           folderId: file.folderId,
         })),
         folders: visibleFolders.map((folder) => ({
           name: folder.name,
           isFavorite: folder.isFavorite ?? false,
+          isPinned: folder.isPinned ?? false,
         })),
         activeShares: activeShares.length,
         storageTotal,
@@ -668,6 +679,27 @@ export default function DashboardPage() {
     }
   }
 
+  async function handleToggleFolderPinned(folderId: Id<"folders">, isPinned: boolean) {
+    try {
+      setFolderMenuId(null);
+      await togglePinnedFolder({ folderId, actorRole: workspaceRole ?? undefined });
+      toast.success(isPinned ? "Folder unpinned" : "Folder pinned");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Failed to update pinned folder");
+    }
+  }
+
+  async function handleToggleFilePinned(file: FileItem) {
+    if (!canManageFile(file)) return;
+
+    try {
+      await togglePinned({ fileId: file._id, actorRole: workspaceRole ?? undefined });
+      toast.success(file.isPinned ? "File unpinned" : "File pinned");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Failed to update pinned file");
+    }
+  }
+
   function createToken() {
     const randomId =
       typeof crypto !== "undefined" && "randomUUID" in crypto
@@ -762,6 +794,30 @@ export default function DashboardPage() {
       toast.error(error instanceof Error ? error.message : "Failed to restore selected items");
     } finally {
       setIsBulkWorking(false);
+    }
+  }
+
+  async function moveSelectedFilesToFolder(folderId?: Id<"folders">) {
+    if (selectedMovableFiles.length === 0) return;
+
+    try {
+      setIsMovingToFolder(true);
+      await moveFilesToFolder({
+        fileIds: selectedMovableFiles.map((file) => file._id),
+        folderId,
+        actorRole: workspaceRole ?? undefined,
+      });
+      toast.success(
+        selectedMovableFiles.length === 1
+          ? "File moved"
+          : `${selectedMovableFiles.length} files moved`
+      );
+      clearSelection();
+      setIsMoveToFolderDialogOpen(false);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Failed to move files");
+    } finally {
+      setIsMovingToFolder(false);
     }
   }
 
@@ -1130,8 +1186,10 @@ export default function DashboardPage() {
             <SelectionFeature
               activeView={activeView}
               selectedItemCount={selectedItemCount}
+              selectedFileCount={selectedMovableFiles.length}
               isBulkWorking={isBulkWorking}
               onClear={clearSelection}
+              onMoveToFolder={() => setIsMoveToFolderDialogOpen(true)}
               onRestore={bulkRestoreSelected}
               onDelete={bulkDeleteSelected}
             />
@@ -1285,8 +1343,9 @@ export default function DashboardPage() {
                         <FolderOpen className="h-5 w-5" />
                       </span>
                       <span className="min-w-0 flex-1">
-                        <span className="block truncate text-sm font-semibold text-zinc-900 dark:text-zinc-50">
-                          {folder.name}
+                        <span className="flex min-w-0 items-center gap-1.5 text-sm font-semibold text-zinc-900 dark:text-zinc-50">
+                          <span className="truncate">{folder.name}</span>
+                          {folder.isPinned ? <Pin className="h-3.5 w-3.5 shrink-0 fill-sky-500 text-sky-500" /> : null}
                         </span>
                       </span>
                     </div>
@@ -1316,6 +1375,7 @@ export default function DashboardPage() {
                       <div onClick={(event) => event.stopPropagation()}>
                         <FolderActionsFeature
                           isFavorite={folder.isFavorite ?? false}
+                          isPinned={folder.isPinned ?? false}
                           isOpen={folderMenuId === folder._id}
                           isDeleting={deletingFolderId === folder._id}
                           canManage={canManageFolder(folder)}
@@ -1331,6 +1391,9 @@ export default function DashboardPage() {
                           onRename={() => openRenameFolderDialog(folder)}
                           onToggleFavorite={() =>
                             handleToggleFolderFavorite(folder._id, folder.isFavorite ?? false)
+                          }
+                          onTogglePinned={() =>
+                            handleToggleFolderPinned(folder._id, folder.isPinned ?? false)
                           }
                         />
                       </div>
@@ -1367,8 +1430,9 @@ export default function DashboardPage() {
                           <FolderOpen className="h-5 w-5" />
                         </span>
                         <div className="min-w-0">
-                          <p className="truncate text-sm font-semibold text-zinc-900 dark:text-zinc-50">
-                            {folder.name}
+                          <p className="flex min-w-0 items-center gap-1.5 text-sm font-semibold text-zinc-900 dark:text-zinc-50">
+                            <span className="truncate">{folder.name}</span>
+                            {folder.isPinned ? <Pin className="h-3.5 w-3.5 shrink-0 fill-sky-500 text-sky-500" /> : null}
                           </p>
                           <p className="text-xs text-zinc-400 dark:text-zinc-500">
                             {selectedFolderIds.includes(folder._id)
@@ -1406,6 +1470,7 @@ export default function DashboardPage() {
                       <div onClick={(event) => event.stopPropagation()}>
                         <FolderActionsFeature
                           isFavorite={folder.isFavorite ?? false}
+                          isPinned={folder.isPinned ?? false}
                           isOpen={folderMenuId === folder._id}
                           isDeleting={deletingFolderId === folder._id}
                           canManage={canManageFolder(folder)}
@@ -1421,6 +1486,9 @@ export default function DashboardPage() {
                           onRename={() => openRenameFolderDialog(folder)}
                           onToggleFavorite={() =>
                             handleToggleFolderFavorite(folder._id, folder.isFavorite ?? false)
+                          }
+                          onTogglePinned={() =>
+                            handleToggleFolderPinned(folder._id, folder.isPinned ?? false)
                           }
                         />
                       </div>
@@ -1477,6 +1545,12 @@ export default function DashboardPage() {
                                 Selected
                               </span>
                             )}
+                            {file.isPinned ? (
+                              <span className="inline-flex items-center gap-1 rounded-full bg-sky-50 px-2 py-0.5 font-medium text-sky-600 dark:bg-sky-500/10 dark:text-sky-300">
+                                <Pin className="h-3 w-3 fill-sky-500" />
+                                Pinned
+                              </span>
+                            ) : null}
                             <span className="rounded-full bg-zinc-100 px-2 py-0.5 font-medium uppercase tracking-wide dark:bg-zinc-800">
                               {file.type}
                             </span>
@@ -1489,6 +1563,23 @@ export default function DashboardPage() {
                     <div className="flex min-w-0 shrink-0 flex-wrap items-center gap-2 lg:justify-end" onClick={(event) => event.stopPropagation()}>
                       {activeView !== "trash" ? (
                         <div className="flex items-center gap-1 rounded-2xl border border-zinc-200/80 bg-zinc-50/90 p-1 dark:border-zinc-800 dark:bg-zinc-950/80">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className={`h-8 rounded-xl px-2.5 hover:bg-white dark:hover:bg-zinc-900 ${
+                              file.isPinned
+                                ? "text-sky-500 hover:text-sky-600"
+                                : "text-zinc-400 hover:text-zinc-700"
+                            }`}
+                            disabled={!canManageFile(file)}
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              void handleToggleFilePinned(file);
+                            }}
+                            title={file.isPinned ? "Unpin" : "Pin"}
+                          >
+                            <Pin className={`h-3.5 w-3.5 ${file.isPinned ? "fill-sky-500" : ""}`} />
+                          </Button>
                           <Button
                             asChild
                             variant="ghost"
@@ -1634,33 +1725,53 @@ export default function DashboardPage() {
                         </div>
                       )}
 
-                      {/* Favourite star */}
                       {activeView !== "trash" && (
-                        <button
-                          type="button"
-                          disabled={!canManageFile(file)}
-                          onClick={async (e) => {
-                            e.stopPropagation();
-                            if (!canManageFile(file)) return;
-                            try {
-                              await toggleFavorite({ fileId: file._id, actorRole: workspaceRole ?? undefined });
-                              toast.success(
-                                file.isFavorite ? "Removed from favourites" : "Added to favourites"
-                              );
-                            } catch {
-                              toast.error("Failed to update favourite");
-                            }
-                          }}
-                          className="absolute right-2 top-2 flex h-7 w-7 items-center justify-center rounded-full border border-zinc-200 bg-white shadow-sm opacity-0 transition-opacity group-hover:opacity-100 disabled:cursor-not-allowed disabled:opacity-40"
-                        >
-                          <Star
-                            className={`h-3.5 w-3.5 ${
-                              file.isFavorite
-                                ? "fill-yellow-400 text-yellow-400"
-                                : "text-zinc-400"
+                        <>
+                          <button
+                            type="button"
+                            disabled={!canManageFile(file)}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              void handleToggleFilePinned(file);
+                            }}
+                            className={`absolute right-2 top-2 flex h-7 w-7 items-center justify-center rounded-full border border-zinc-200 bg-white shadow-sm transition-opacity disabled:cursor-not-allowed disabled:opacity-40 ${
+                              file.isPinned ? "opacity-100" : "opacity-0 group-hover:opacity-100"
                             }`}
-                          />
-                        </button>
+                            title={file.isPinned ? "Unpin" : "Pin"}
+                          >
+                            <Pin
+                              className={`h-3.5 w-3.5 ${
+                                file.isPinned ? "fill-sky-500 text-sky-500" : "text-zinc-400"
+                              }`}
+                            />
+                          </button>
+                          <button
+                            type="button"
+                            disabled={!canManageFile(file)}
+                            onClick={async (e) => {
+                              e.stopPropagation();
+                              if (!canManageFile(file)) return;
+                              try {
+                                await toggleFavorite({ fileId: file._id, actorRole: workspaceRole ?? undefined });
+                                toast.success(
+                                  file.isFavorite ? "Removed from favourites" : "Added to favourites"
+                                );
+                              } catch {
+                                toast.error("Failed to update favourite");
+                              }
+                            }}
+                            className="absolute right-10 top-2 flex h-7 w-7 items-center justify-center rounded-full border border-zinc-200 bg-white shadow-sm opacity-0 transition-opacity group-hover:opacity-100 disabled:cursor-not-allowed disabled:opacity-40"
+                            title={file.isFavorite ? "Remove from favourites" : "Add to favourites"}
+                          >
+                            <Star
+                              className={`h-3.5 w-3.5 ${
+                                file.isFavorite
+                                  ? "fill-yellow-400 text-yellow-400"
+                                  : "text-zinc-400"
+                              }`}
+                            />
+                          </button>
+                        </>
                       )}
                     </div>
 
@@ -1672,6 +1783,12 @@ export default function DashboardPage() {
                             {file.name}
                           </p>
                           <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-zinc-400 dark:text-zinc-500">
+                            {file.isPinned ? (
+                              <span className="inline-flex items-center gap-1 rounded-full bg-sky-50 px-2 py-0.5 font-medium text-sky-600 dark:bg-sky-500/10 dark:text-sky-300">
+                                <Pin className="h-3 w-3 fill-sky-500" />
+                                Pinned
+                              </span>
+                            ) : null}
                             <span className="rounded-full bg-zinc-100 px-2 py-0.5 font-medium uppercase tracking-wide dark:bg-zinc-800">
                               {file.type}
                             </span>
@@ -2151,6 +2268,82 @@ export default function DashboardPage() {
           setFolderRenameValue("");
         }}
       />
+
+      <Dialog
+        open={isMoveToFolderDialogOpen}
+        onOpenChange={(isOpen) => {
+          if (!isMovingToFolder) setIsMoveToFolderDialogOpen(isOpen);
+        }}
+      >
+        <DialogContent className="gap-5 p-5 sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="text-xl">Move to folder</DialogTitle>
+            <DialogDescription>
+              Choose a destination for {selectedMovableFiles.length === 1 ? "the selected file" : `${selectedMovableFiles.length} selected files`}.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="max-h-[360px] space-y-2 overflow-y-auto pr-1">
+            <button
+              type="button"
+              disabled={isMovingToFolder}
+              onClick={() => void moveSelectedFilesToFolder(undefined)}
+              className="flex w-full items-center justify-between gap-3 rounded-xl border border-zinc-200 bg-white px-4 py-3 text-left transition hover:border-zinc-300 hover:bg-zinc-50 disabled:cursor-not-allowed disabled:opacity-60 dark:border-zinc-800 dark:bg-zinc-900 dark:hover:border-zinc-700 dark:hover:bg-zinc-800"
+            >
+              <span className="flex min-w-0 items-center gap-3">
+                <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-zinc-100 text-zinc-700 dark:bg-zinc-800 dark:text-zinc-200">
+                  <Files className="h-5 w-5" />
+                </span>
+                <span className="min-w-0">
+                  <span className="block truncate text-sm font-semibold text-zinc-900 dark:text-zinc-50">
+                    All files
+                  </span>
+                </span>
+              </span>
+              {isMovingToFolder ? <Loader2 className="h-4 w-4 animate-spin text-zinc-400" /> : null}
+            </button>
+
+            {moveTargetFolders.map((folder) => (
+              <button
+                key={folder._id}
+                type="button"
+                disabled={isMovingToFolder}
+                onClick={() => void moveSelectedFilesToFolder(folder._id)}
+                className="flex w-full items-center justify-between gap-3 rounded-xl border border-zinc-200 bg-white px-4 py-3 text-left transition hover:border-zinc-300 hover:bg-zinc-50 disabled:cursor-not-allowed disabled:opacity-60 dark:border-zinc-800 dark:bg-zinc-900 dark:hover:border-zinc-700 dark:hover:bg-zinc-800"
+              >
+                <span className="flex min-w-0 items-center gap-3">
+                  <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-zinc-100 text-zinc-700 dark:bg-zinc-800 dark:text-zinc-200">
+                    <FolderOpen className="h-5 w-5" />
+                  </span>
+                  <span className="min-w-0">
+                    <span className="flex min-w-0 items-center gap-1.5 text-sm font-semibold text-zinc-900 dark:text-zinc-50">
+                      <span className="truncate">{folder.name}</span>
+                      {folder.isPinned ? <Pin className="h-3.5 w-3.5 shrink-0 fill-sky-500 text-sky-500" /> : null}
+                    </span>
+                    {folder.isFavorite ? (
+                      <span className="block text-xs text-zinc-400 dark:text-zinc-500">
+                        Favourite
+                      </span>
+                    ) : null}
+                  </span>
+                </span>
+                {isMovingToFolder ? <Loader2 className="h-4 w-4 animate-spin text-zinc-400" /> : null}
+              </button>
+            ))}
+          </div>
+
+          <div className="flex justify-end">
+            <Button
+              type="button"
+              variant="outline"
+              disabled={isMovingToFolder}
+              onClick={() => setIsMoveToFolderDialogOpen(false)}
+            >
+              Cancel
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       <Dialog
         open={isFolderDialogOpen}

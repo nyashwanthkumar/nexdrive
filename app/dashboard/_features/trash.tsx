@@ -7,6 +7,7 @@ type FolderItem = {
   userId?: string;
   shouldDelete?: boolean;
   isFavorite?: boolean;
+  isPinned?: boolean;
   deletedAt?: number;
 };
 

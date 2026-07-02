@@ -1,23 +1,27 @@
-import { MoreVertical, Pencil, Star, Trash2 } from "lucide-react";
+import { MoreVertical, Pencil, Pin, Star, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 export function FolderActionsFeature({
   isFavorite,
+  isPinned,
   isOpen,
   isDeleting,
   canManage,
   onToggle,
   onRename,
   onToggleFavorite,
+  onTogglePinned,
   onDelete,
 }: {
   isFavorite: boolean;
+  isPinned: boolean;
   isOpen: boolean;
   isDeleting: boolean;
   canManage: boolean;
   onToggle: () => void;
   onRename: () => void;
   onToggleFavorite: () => void;
+  onTogglePinned: () => void;
   onDelete: () => void;
 }) {
   return (
@@ -63,6 +67,17 @@ export function FolderActionsFeature({
           >
             <Star className={`h-4 w-4 ${isFavorite ? "fill-yellow-400 text-yellow-400" : ""}`} />
             {isFavorite ? "Remove from favourites" : "Add to favourites"}
+          </button>
+          <button
+            type="button"
+            className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-zinc-700 transition-colors hover:bg-zinc-50"
+            onClick={(event) => {
+              event.stopPropagation();
+              onTogglePinned();
+            }}
+          >
+            <Pin className={`h-4 w-4 ${isPinned ? "fill-sky-500 text-sky-500" : ""}`} />
+            {isPinned ? "Unpin folder" : "Pin folder"}
           </button>
           <div className="my-1 h-px bg-zinc-100" />
           <button

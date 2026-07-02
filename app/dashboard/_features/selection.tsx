@@ -1,17 +1,21 @@
-import { RotateCcw, Trash2, X } from "lucide-react";
+import { FolderOpen, RotateCcw, Trash2, X } from "lucide-react";
 
 export function SelectionFeature({
   activeView,
   selectedItemCount,
+  selectedFileCount,
   isBulkWorking,
   onClear,
+  onMoveToFolder,
   onRestore,
   onDelete,
 }: {
   activeView: string;
   selectedItemCount: number;
+  selectedFileCount: number;
   isBulkWorking: boolean;
   onClear: () => void;
+  onMoveToFolder: () => void;
   onRestore: () => void;
   onDelete: () => void;
 }) {
@@ -39,6 +43,17 @@ export function SelectionFeature({
           >
             <RotateCcw className="h-4 w-4" />
             Restore
+          </button>
+        ) : null}
+        {activeView !== "trash" && selectedFileCount > 0 ? (
+          <button
+            type="button"
+            disabled={isBulkWorking}
+            onClick={onMoveToFolder}
+            className="flex h-9 items-center gap-2 rounded-full px-3 text-sm text-zinc-600 transition hover:bg-white hover:text-zinc-950 disabled:opacity-50 dark:text-zinc-300 dark:hover:bg-zinc-800 dark:hover:text-zinc-100"
+          >
+            <FolderOpen className="h-4 w-4" />
+            Move to folder
           </button>
         ) : null}
         <button
