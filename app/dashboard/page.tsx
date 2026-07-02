@@ -24,6 +24,7 @@ import {
   Files,
   FileSpreadsheet,
   FileText,
+  FolderPlus,
   FolderOpen,
   ImageIcon,
   Link2,
@@ -202,6 +203,9 @@ export default function DashboardPage() {
   const [isEmptyingTrash, setIsEmptyingTrash] = useState(false);
   const [isMoveToFolderDialogOpen, setIsMoveToFolderDialogOpen] = useState(false);
   const [isMovingToFolder, setIsMovingToFolder] = useState(false);
+  const [isMoveFolderCreateOpen, setIsMoveFolderCreateOpen] = useState(false);
+  const [moveFolderName, setMoveFolderName] = useState("");
+  const [isCreatingMoveFolder, setIsCreatingMoveFolder] = useState(false);
   useOrganizationInviteHandoff();
 
   const organizationMembershipRole = (organization as { membership?: { role?: string } } | null)
@@ -626,6 +630,30 @@ export default function DashboardPage() {
     }
   }
 
+  async function submitMoveFolder(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+
+    if (!orgId) return;
+
+    const name = moveFolderName.trim();
+    if (!name) {
+      toast.error("Folder name is required");
+      return;
+    }
+
+    try {
+      setIsCreatingMoveFolder(true);
+      await createFolder({ name, orgId, actorRole: workspaceRole ?? undefined });
+      setMoveFolderName("");
+      setIsMoveFolderCreateOpen(false);
+      toast.success("Folder created");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Failed to create folder");
+    } finally {
+      setIsCreatingMoveFolder(false);
+    }
+  }
+
   async function handleDeleteFolder() {
     if (!folderPendingDelete) return;
     try {
@@ -882,6 +910,19 @@ export default function DashboardPage() {
                 orgId={orgId}
                 actorRole={workspaceRole ?? undefined}
               />
+              {canManageCurrentWorkspace && orgId && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="icon-lg"
+                  className="h-12 w-12 rounded-xl border-zinc-200 bg-white text-zinc-700 shadow-sm shadow-zinc-200/70 hover:bg-zinc-50 hover:text-zinc-950 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-200 dark:shadow-none dark:hover:bg-zinc-800 dark:hover:text-zinc-50 sm:h-14 sm:w-14"
+                  onClick={() => setIsFolderDialogOpen(true)}
+                  aria-label="New folder"
+                  title="New folder"
+                >
+                  <FolderPlus className="h-5 w-5" />
+                </Button>
+              )}
             </UploadFeature>
 
             <nav
@@ -1071,9 +1112,11 @@ export default function DashboardPage() {
 
             {/* Header */}
             <div className="nexdrive-fade-up flex min-w-0 flex-wrap items-center justify-between gap-3 [animation-delay:40ms]">
-              <div className="min-w-0 flex-1">
-                <h1 className="text-xl font-semibold tracking-tight text-zinc-950 dark:text-zinc-50">{viewMeta.label}</h1>
-                <p className="mt-0.5 text-xs text-zinc-500 dark:text-zinc-400">{viewDescription}</p>
+              <div className="flex min-w-0 flex-1 items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <h1 className="text-xl font-semibold tracking-tight text-zinc-950 dark:text-zinc-50">{viewMeta.label}</h1>
+                  <p className="mt-0.5 text-xs text-zinc-500 dark:text-zinc-400">{viewDescription}</p>
+                </div>
               </div>
               <div className="relative z-[150] flex w-full min-w-0 flex-wrap items-center gap-2 rounded-xl border border-zinc-200/80 bg-white/90 p-1.5 shadow-sm shadow-zinc-200/50 backdrop-blur dark:border-zinc-800 dark:bg-zinc-900/85 dark:shadow-none sm:w-auto sm:justify-end">
                 {!isLoading && toolbarItemCount > 0 && (
@@ -1157,31 +1200,6 @@ export default function DashboardPage() {
                 <ViewModeFeature displayMode={displayMode} onChange={setDisplayMode} />
               </div>
             </div>
-
-            {activeView === "folders" && !currentFolderId && (
-              <div className="nexdrive-fade-up flex flex-col gap-3 rounded-2xl border border-zinc-200/80 bg-white px-4 py-4 shadow-sm shadow-zinc-200/40 dark:border-zinc-800 dark:bg-zinc-900 dark:shadow-none sm:flex-row sm:items-center sm:justify-between">
-                <div>
-                  <h2 className="text-sm font-semibold text-zinc-900 dark:text-zinc-50">
-                    Folders
-                  </h2>
-                  <p className="mt-1 text-xs text-zinc-500 dark:text-zinc-400">
-                    {canManageCurrentWorkspace
-                      ? "Keep related uploads together. Folders moved to trash can be restored later."
-                      : "Browse the folders shared with this workspace."}
-                  </p>
-                </div>
-                {canManageCurrentWorkspace && (
-                  <Button
-                    size="sm"
-                    className="h-9 rounded-xl"
-                    onClick={() => setIsFolderDialogOpen(true)}
-                  >
-                    <Plus className="mr-1.5 h-3.5 w-3.5" />
-                    Create folder
-                  </Button>
-                )}
-              </div>
-            )}
 
             <SelectionFeature
               activeView={activeView}
@@ -2272,7 +2290,12 @@ export default function DashboardPage() {
       <Dialog
         open={isMoveToFolderDialogOpen}
         onOpenChange={(isOpen) => {
-          if (!isMovingToFolder) setIsMoveToFolderDialogOpen(isOpen);
+          if (isMovingToFolder) return;
+          setIsMoveToFolderDialogOpen(isOpen);
+          if (!isOpen) {
+            setIsMoveFolderCreateOpen(false);
+            setMoveFolderName("");
+          }
         }}
       >
         <DialogContent className="gap-5 p-5 sm:max-w-lg">
@@ -2282,6 +2305,66 @@ export default function DashboardPage() {
               Choose a destination for {selectedMovableFiles.length === 1 ? "the selected file" : `${selectedMovableFiles.length} selected files`}.
             </DialogDescription>
           </DialogHeader>
+
+          {canManageCurrentWorkspace && (
+            <div className="flex items-center justify-between border-b border-zinc-100 pb-2 dark:border-zinc-800">
+              <span className="text-sm font-medium text-zinc-500 dark:text-zinc-400">
+                Destination
+              </span>
+              <Button
+                type="button"
+                variant="outline"
+                size="icon-sm"
+                className="rounded-lg"
+                onClick={() => setIsMoveFolderCreateOpen((open) => !open)}
+                aria-label="Create folder"
+                title="Create folder"
+              >
+                <Plus className="h-3.5 w-3.5" />
+              </Button>
+            </div>
+          )}
+
+          {isMoveFolderCreateOpen && (
+            <form
+              onSubmit={submitMoveFolder}
+              className="flex flex-col gap-2 rounded-xl border border-zinc-200 bg-zinc-50 p-2 dark:border-zinc-800 dark:bg-zinc-950 sm:flex-row"
+            >
+              <Input
+                value={moveFolderName}
+                onChange={(event) => setMoveFolderName(event.target.value)}
+                autoFocus
+                placeholder="New folder name"
+                className="h-9 bg-white dark:bg-zinc-900"
+              />
+              <div className="flex gap-2 sm:shrink-0">
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="h-9 flex-1 sm:flex-none"
+                  disabled={isCreatingMoveFolder}
+                  onClick={() => {
+                    setIsMoveFolderCreateOpen(false);
+                    setMoveFolderName("");
+                  }}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  type="submit"
+                  className="h-9 flex-1 sm:flex-none"
+                  disabled={isCreatingMoveFolder}
+                >
+                  {isCreatingMoveFolder ? (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  ) : (
+                    <Plus className="h-3.5 w-3.5" />
+                  )}
+                  Create
+                </Button>
+              </div>
+            </form>
+          )}
 
           <div className="max-h-[360px] space-y-2 overflow-y-auto pr-1">
             <button
