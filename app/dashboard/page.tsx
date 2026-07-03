@@ -24,7 +24,6 @@ import {
   Files,
   FileSpreadsheet,
   FileText,
-  FolderPlus,
   FolderOpen,
   ImageIcon,
   Link2,
@@ -175,9 +174,6 @@ export default function DashboardPage() {
   const [folderRenameValue, setFolderRenameValue] = useState("");
   const [isRenamingFolder, setIsRenamingFolder] = useState(false);
   const [currentFolderId, setCurrentFolderId] = useState<Id<"folders"> | null>(null);
-  const [isFolderDialogOpen, setIsFolderDialogOpen] = useState(false);
-  const [folderName, setFolderName] = useState("");
-  const [isCreatingFolder, setIsCreatingFolder] = useState(false);
   const [folderMenuId, setFolderMenuId] = useState<Id<"folders"> | null>(null);
   const [deletingFolderId, setDeletingFolderId] = useState<Id<"folders"> | null>(null);
   const [folderPendingDelete, setFolderPendingDelete] = useState<{
@@ -349,13 +345,6 @@ export default function DashboardPage() {
       setCurrentFolderId(null);
     }
   }, [activeView, canViewActivity]);
-
-  useEffect(() => {
-    if (!canManageCurrentWorkspace) {
-      setIsFolderDialogOpen(false);
-      setFolderName("");
-    }
-  }, [canManageCurrentWorkspace]);
 
   if (!isLoaded || !isSignedIn) {
     return (
@@ -600,33 +589,6 @@ export default function DashboardPage() {
       toast.error(error instanceof Error ? error.message : "Failed to rename folder");
     } finally {
       setIsRenamingFolder(false);
-    }
-  }
-
-  async function submitFolder(event: React.FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-
-    if (!canManageCurrentWorkspace) {
-      setFolderName("");
-      setIsFolderDialogOpen(false);
-      return;
-    }
-
-    if (!orgId) {
-      toast.error("Organization or user not found");
-      return;
-    }
-
-    try {
-      setIsCreatingFolder(true);
-      await createFolder({ name: folderName, orgId, actorRole: workspaceRole ?? undefined });
-      setFolderName("");
-      setIsFolderDialogOpen(false);
-      toast.success("Folder created");
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Failed to create folder");
-    } finally {
-      setIsCreatingFolder(false);
     }
   }
 
@@ -910,19 +872,6 @@ export default function DashboardPage() {
                 orgId={orgId}
                 actorRole={workspaceRole ?? undefined}
               />
-              {canManageCurrentWorkspace && orgId && (
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="icon-lg"
-                  className="h-12 w-12 rounded-xl border-zinc-200 bg-white text-zinc-700 shadow-sm shadow-zinc-200/70 hover:bg-zinc-50 hover:text-zinc-950 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-200 dark:shadow-none dark:hover:bg-zinc-800 dark:hover:text-zinc-50 sm:h-14 sm:w-14"
-                  onClick={() => setIsFolderDialogOpen(true)}
-                  aria-label="New folder"
-                  title="New folder"
-                >
-                  <FolderPlus className="h-5 w-5" />
-                </Button>
-              )}
             </UploadFeature>
 
             <nav
@@ -2425,50 +2374,6 @@ export default function DashboardPage() {
               Cancel
             </Button>
           </div>
-        </DialogContent>
-      </Dialog>
-
-      <Dialog
-        open={isFolderDialogOpen}
-        onOpenChange={(isOpen) => {
-          if (isOpen && !canManageCurrentWorkspace) return;
-          setIsFolderDialogOpen(isOpen);
-          if (!isOpen) setFolderName("");
-        }}
-      >
-        <DialogContent className="gap-5 p-5 sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle className="text-xl">New folder</DialogTitle>
-          </DialogHeader>
-          <form onSubmit={submitFolder} className="space-y-5">
-            <div className="space-y-2">
-              <label
-                htmlFor="folder-name"
-                className="text-sm font-medium text-zinc-700"
-              >
-                Name
-              </label>
-              <Input
-                id="folder-name"
-                value={folderName}
-                onChange={(event) => setFolderName(event.target.value)}
-                autoFocus
-                placeholder="Folder name"
-              />
-            </div>
-            <div className="flex justify-end gap-2">
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => setIsFolderDialogOpen(false)}
-              >
-                Cancel
-              </Button>
-              <Button type="submit" disabled={isCreatingFolder}>
-                {isCreatingFolder ? "Creating..." : "Create"}
-              </Button>
-            </div>
-          </form>
         </DialogContent>
       </Dialog>
 

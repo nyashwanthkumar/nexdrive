@@ -496,7 +496,7 @@ export const createFolder = mutation({
       throw new Error("Folder name is too long");
     }
 
-    await ctx.db.insert("folders", {
+    return await ctx.db.insert("folders", {
       name,
       orgId: args.orgId,
       userId: identity.subject,

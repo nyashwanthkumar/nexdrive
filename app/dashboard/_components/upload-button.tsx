@@ -25,7 +25,7 @@ import {
   FormMessage,
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
-import { FileUp, FolderOpen, Plus, UploadCloud } from "lucide-react";
+import { FileUp, FolderOpen, FolderPlus, Loader2, Plus, UploadCloud } from "lucide-react";
 
 const formSchema = z.object({
   title: z.string().min(1, "Title is required").max(200, "Title is too long"),
@@ -70,10 +70,14 @@ export function UploadButton({
   actorRole?: string;
 }) {
   const createFile = useMutation(api.files.createFile);
+  const createFolder = useMutation(api.files.createFolder);
   const generateUploadUrl = useMutation(api.files.generateUploadUrl);
   const [isFileDialogOpen, setIsFileDialogOpen] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
   const [uploadStatus, setUploadStatus] = useState("");
+  const [isFolderCreateOpen, setIsFolderCreateOpen] = useState(false);
+  const [folderName, setFolderName] = useState("");
+  const [isCreatingFolder, setIsCreatingFolder] = useState(false);
   const inputRef = useRef<HTMLInputElement | null>(null);
 
   const form = useForm<z.infer<typeof formSchema>>({
@@ -113,6 +117,41 @@ export function UploadButton({
 
     const file = event.dataTransfer.files[0];
     if (file) setSelectedFile(file);
+  }
+
+  function resetFolderCreator() {
+    setIsFolderCreateOpen(false);
+    setFolderName("");
+    setIsCreatingFolder(false);
+  }
+
+  async function createUploadFolder() {
+    if (!orgId) {
+      toast.error("Organization or user not found");
+      return;
+    }
+
+    const name = folderName.trim();
+    if (!name) {
+      toast.error("Folder name is required");
+      return;
+    }
+
+    try {
+      setIsCreatingFolder(true);
+      const folderId = await createFolder({ name, orgId, actorRole });
+      form.setValue("folderId", folderId, {
+        shouldDirty: true,
+        shouldTouch: true,
+        shouldValidate: true,
+      });
+      resetFolderCreator();
+      toast.success("Folder created");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Failed to create folder");
+    } finally {
+      setIsCreatingFolder(false);
+    }
   }
 
   async function onSubmit(values: z.infer<typeof formSchema>) {
@@ -175,6 +214,7 @@ export function UploadButton({
         setIsFileDialogOpen(isOpen);
         setIsDragging(false);
         setUploadStatus("");
+        resetFolderCreator();
         form.reset();
       }}
     >
@@ -214,22 +254,82 @@ export function UploadButton({
               control={form.control}
               name="folderId"
               render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Save in</FormLabel>
+                <FormItem className="space-y-2">
+                  <div className="flex items-center justify-between gap-3">
+                    <FormLabel>Save in</FormLabel>
+                    <button
+                      type="button"
+                      disabled={disabled || !orgId || isCreatingFolder}
+                      onClick={() => setIsFolderCreateOpen((open) => !open)}
+                      className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-zinc-200 bg-white px-2.5 text-xs font-medium text-zinc-600 shadow-sm transition hover:border-zinc-300 hover:bg-zinc-50 hover:text-zinc-950 disabled:cursor-not-allowed disabled:opacity-50 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-300 dark:hover:border-zinc-700 dark:hover:bg-zinc-800 dark:hover:text-zinc-50"
+                    >
+                      <FolderPlus className="h-3.5 w-3.5" />
+                      New folder
+                    </button>
+                  </div>
                   <FormControl>
-                    <div className="flex items-center gap-2 rounded-xl border border-zinc-200 bg-white px-3">
-                      <FolderOpen className="h-4 w-4 shrink-0 text-zinc-500" />
-                      <select
-                        {...field}
-                        className="h-10 w-full bg-transparent text-sm text-zinc-800 outline-none"
-                      >
-                        <option value="root">Files</option>
-                        {folders.map((folder) => (
-                          <option key={folder._id} value={folder._id}>
-                            {folder.name}
-                          </option>
-                        ))}
-                      </select>
+                    <div className="rounded-2xl border border-zinc-200 bg-zinc-50/70 p-2 dark:border-zinc-800 dark:bg-zinc-950/60">
+                      <div className="flex items-center gap-2 rounded-xl bg-white px-3 shadow-sm shadow-zinc-200/40 dark:bg-zinc-900 dark:shadow-none">
+                        <FolderOpen className="h-4 w-4 shrink-0 text-zinc-500 dark:text-zinc-400" />
+                        <select
+                          {...field}
+                          className="h-11 w-full bg-transparent text-sm font-medium text-zinc-800 outline-none dark:text-zinc-100"
+                        >
+                          <option value="root">Files</option>
+                          {folders.map((folder) => (
+                            <option key={folder._id} value={folder._id}>
+                              {folder.name}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+
+                      {isFolderCreateOpen && (
+                        <div className="mt-2 flex flex-col gap-2 rounded-xl border border-zinc-200 bg-white p-2 dark:border-zinc-800 dark:bg-zinc-900 sm:flex-row">
+                          <Input
+                            value={folderName}
+                            onChange={(event) => setFolderName(event.target.value)}
+                            onKeyDown={(event) => {
+                              if (event.key === "Enter") {
+                                event.preventDefault();
+                                void createUploadFolder();
+                              }
+
+                              if (event.key === "Escape") {
+                                event.preventDefault();
+                                resetFolderCreator();
+                              }
+                            }}
+                            autoFocus
+                            placeholder="Folder name"
+                            className="h-9"
+                          />
+                          <div className="flex gap-2 sm:shrink-0">
+                            <Button
+                              type="button"
+                              variant="outline"
+                              className="h-9 flex-1 sm:flex-none"
+                              disabled={isCreatingFolder}
+                              onClick={resetFolderCreator}
+                            >
+                              Cancel
+                            </Button>
+                            <Button
+                              type="button"
+                              className="h-9 flex-1 sm:flex-none"
+                              disabled={isCreatingFolder}
+                              onClick={() => void createUploadFolder()}
+                            >
+                              {isCreatingFolder ? (
+                                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                              ) : (
+                                <Plus className="h-3.5 w-3.5" />
+                              )}
+                              Create
+                            </Button>
+                          </div>
+                        </div>
+                      )}
                     </div>
                   </FormControl>
                   <FormMessage />
