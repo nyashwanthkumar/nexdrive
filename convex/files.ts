@@ -1168,8 +1168,11 @@ export const permanentlyDeleteOldFiles = internalMutation({
   args: {},
   handler: async (ctx) => {
     const files = await ctx.db.query("files").collect();
+    const folders = await ctx.db.query("folders").collect();
     const now = Date.now();
     const thirtyDays = 30 * 24 * 60 * 60 * 1000;
+    let deletedFiles = 0;
+    let deletedFolders = 0;
 
     for (const file of files) {
       const shouldDelete = file.shouldDelete ?? false;
@@ -1178,7 +1181,20 @@ export const permanentlyDeleteOldFiles = internalMutation({
       if (shouldDelete && deletedAt && now - deletedAt >= thirtyDays) {
         await ctx.storage.delete(file.fileId);
         await ctx.db.delete(file._id);
+        deletedFiles += 1;
       }
     }
+
+    for (const folder of folders) {
+      const shouldDelete = folder.shouldDelete ?? false;
+      const deletedAt = folder.deletedAt;
+
+      if (shouldDelete && deletedAt && now - deletedAt >= thirtyDays) {
+        await ctx.db.delete(folder._id);
+        deletedFolders += 1;
+      }
+    }
+
+    return { deletedFiles, deletedFolders };
   },
 });

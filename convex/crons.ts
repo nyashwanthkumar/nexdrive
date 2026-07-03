@@ -4,7 +4,7 @@ import { internal } from "./_generated/api";
 const crons = cronJobs();
 
 crons.daily(
-  "delete old trashed files",
+  "delete old trash items",
   { hourUTC: 2, minuteUTC: 0 },
   internal.files.permanentlyDeleteOldFiles
 );
